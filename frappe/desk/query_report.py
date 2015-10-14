@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -11,6 +11,7 @@ from frappe.modules import scrub, get_module_path
 from frappe.utils import flt, cint, get_html_format
 from frappe.translate import send_translations
 import frappe.desk.reportview
+from frappe.permissions import get_role_permissions
 
 def get_report_doc(report_name):
 	doc = frappe.get_doc("Report", report_name)
@@ -69,7 +70,7 @@ def run(report_name, filters=()):
 		frappe.msgprint(_("Must have report permission to access this report."),
 			raise_exception=True)
 
-	columns, results = [], []
+	columns, result = [], []
 	if report.report_type=="Query Report":
 		if not report.query:
 			frappe.msgprint(_("Must specify a Query to run"), raise_exception=True)
@@ -126,12 +127,15 @@ def add_total_row(result, columns):
 	if isinstance(columns[0], basestring):
 		first_col = columns[0].split(":")
 		if len(first_col) > 1:
-			first_col_fieldtype = first_col[1]
+			first_col_fieldtype = first_col[1].split("/")[0]
 	else:
 		first_col_fieldtype = columns[0].get("fieldtype")
 
 	if first_col_fieldtype not in ["Currency", "Int", "Float", "Percent"]:
-		total_row[0] = "Total"
+		if first_col_fieldtype == "Link":
+			total_row[0] = "'" + _("Total") + "'"
+		else:
+			total_row[0] = _("Total")
 
 	result.append(total_row)
 	return result
@@ -140,18 +144,37 @@ def get_filtered_data(ref_doctype, columns, data):
 	result = []
 	linked_doctypes = get_linked_doctypes(columns, data)
 	match_filters_per_doctype = get_user_match_filters(linked_doctypes, ref_doctype)
+	shared = frappe.share.get_shared(ref_doctype)
+	columns_dict = get_columns_dict(columns)
+
+	role_permissions = get_role_permissions(frappe.get_meta(ref_doctype))
+	if_owner = role_permissions.get("if_owner", {}).get("report")
 
 	if match_filters_per_doctype:
 		for row in data:
-			if has_match(row, linked_doctypes, match_filters_per_doctype):
+			# Why linked_doctypes.get(ref_doctype)? because if column is empty, linked_doctypes[ref_doctype] is removed
+			if linked_doctypes.get(ref_doctype) and shared and row[linked_doctypes[ref_doctype]] in shared:
+				result.append(row)
+
+			elif has_match(row, linked_doctypes, match_filters_per_doctype, ref_doctype, if_owner, columns_dict):
 				result.append(row)
 	else:
-		for row in data:
-			result.append(row)
+		result = list(data)
 
 	return result
 
-def has_match(row, linked_doctypes, doctype_match_filters):
+def has_match(row, linked_doctypes, doctype_match_filters, ref_doctype, if_owner, columns_dict):
+	"""Returns True if after evaluating permissions for each linked doctype
+		- There is an owner match for the ref_doctype
+		- `and` There is a user permission match for all linked doctypes
+
+		Returns True if the row is empty
+
+		Note:
+		Each doctype could have multiple conflicting user permission doctypes.
+		Hence even if one of the sets allows a match, it is true.
+		This behavior is equivalent to the trickling of user permissions of linked doctypes to the ref doctype.
+	"""
 	resultant_match = True
 
 	if not row:
@@ -161,19 +184,32 @@ def has_match(row, linked_doctypes, doctype_match_filters):
 	for doctype, filter_list in doctype_match_filters.items():
 		matched_for_doctype = False
 
-		for match_filters in filter_list:
-			match = True
-			for dt, idx in linked_doctypes.items():
-				if dt in match_filters and row[idx] not in match_filters[dt]:
-					match = False
+		if doctype==ref_doctype and if_owner:
+			idx = linked_doctypes.get("User")
+			if (idx is not None
+				and row[idx]==frappe.session.user
+				and columns_dict[idx]==columns_dict.get("owner")):
+					# owner match is true
+					matched_for_doctype = True
+
+		if not matched_for_doctype:
+			for match_filters in filter_list:
+				match = True
+				for dt, idx in linked_doctypes.items():
+					# case handled above
+					if dt=="User" and columns_dict[idx]==columns_dict.get("owner"):
+						continue
+
+					if dt in match_filters and row[idx] not in match_filters[dt]:
+						match = False
+						break
+
+				# each doctype could have multiple conflicting user permission doctypes, hence using OR
+				# so that even if one of the sets allows a match, it is true
+				matched_for_doctype = matched_for_doctype or match
+
+				if matched_for_doctype:
 					break
-
-			# each doctype could have multiple conflicting user permission doctypes, hence using OR
-			# so that even if one of the sets allows a match, it is true
-			matched_for_doctype = matched_for_doctype or match
-
-			if matched_for_doctype:
-				break
 
 		# each doctype's user permissions should match the row! hence using AND
 		resultant_match = resultant_match and matched_for_doctype
@@ -186,16 +222,16 @@ def has_match(row, linked_doctypes, doctype_match_filters):
 def get_linked_doctypes(columns, data):
 	linked_doctypes = {}
 
-	for idx, col in enumerate(columns):
-		if isinstance(col, basestring):
-			col = col.split(":")
-			if len(col) > 1 and col[1].startswith("Link"):
-				link_dt = col[1].split("/")[1]
-				linked_doctypes[link_dt] = idx
+	columns_dict = get_columns_dict(columns)
 
-		# dict
-		elif col.get("fieldtype")=="Link" and col.get("options"):
-			linked_doctypes[col["options"]] = col["fieldname"]
+	for idx, col in enumerate(columns):
+		df = columns_dict[idx]
+		if df.get("fieldtype")=="Link":
+			if isinstance(col, basestring):
+				linked_doctypes[df["options"]] = idx
+			else:
+				# dict
+				linked_doctypes[df["options"]] = df["fieldname"]
 
 	# remove doctype if column is empty
 	for doctype, key in linked_doctypes.items():
@@ -203,6 +239,37 @@ def get_linked_doctypes(columns, data):
 			del linked_doctypes[doctype]
 
 	return linked_doctypes
+
+def get_columns_dict(columns):
+	"""Returns a dict with column docfield values as dict
+		The keys for the dict are both idx and fieldname,
+		so either index or fieldname can be used to search for a column's docfield properties
+	"""
+	columns_dict = {}
+	for idx, col in enumerate(columns):
+		col_dict = {}
+
+		# string
+		if isinstance(col, basestring):
+			col = col.split(":")
+			if len(col) > 1:
+				if "/" in col[1]:
+					col_dict["fieldtype"], col_dict["options"] = col[1].split("/")
+				else:
+					col_dict["fieldtype"] = col[1]
+
+			col_dict["fieldname"] = frappe.scrub(col[0])
+
+		# dict
+		else:
+			col_dict.update(col)
+			if "fieldname" not in col_dict:
+				col_dict["fieldname"] = frappe.scrub(col_dict["label"])
+
+		columns_dict[idx] = col_dict
+		columns_dict[col_dict["fieldname"]] = col_dict
+
+	return columns_dict
 
 def get_user_match_filters(doctypes, ref_doctype):
 	match_filters = {}

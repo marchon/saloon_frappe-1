@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 """
@@ -10,6 +10,7 @@ Inspect elements of a given module and return its objects
 
 import inspect, importlib, re, frappe
 from frappe.model.document import get_controller
+
 
 def automodule(name):
 	"""Returns a list of attributes for given module string.
@@ -43,15 +44,21 @@ def automodule(name):
 		"members": filter(None, attributes),
 	}
 
+installed = None
 def get_version(name):
+	print name
+	global installed
+
+	if not installed:
+		installed = frappe.get_installed_apps()
+
 	def _for_module(m):
 		return importlib.import_module(m.split(".")[0]).__version__
 
-	if "." in name or name=="frappe":
+	if "." in name or name in installed:
 		return _for_module(name)
 	else:
 		return _for_module(get_controller(name).__module__)
-
 
 def get_class_info(class_obj, module_name):
 	members = []
@@ -75,15 +82,14 @@ def get_class_info(class_obj, module_name):
 	}
 
 def get_function_info(value):
-	docs = getattr(value, "__doc__", "")
-	if docs:
-		return {
-			"name": value.__name__,
-			"type": "function",
-			"args": inspect.getargspec(value),
-			"docs": parse(docs),
-			"whitelisted": value in frappe.whitelisted
-		}
+	docs = getattr(value, "__doc__")
+	return {
+		"name": value.__name__,
+		"type": "function",
+		"args": inspect.getargspec(value),
+		"docs": parse(docs) if docs else '<span class="text-muted">No docs</span>',
+		"whitelisted": value in frappe.whitelisted
+	}
 
 def parse(docs):
 	"""Parse __docs__ text into markdown. Will parse directives like `:param name:` etc"""
@@ -137,16 +143,3 @@ def strip_leading_tabs(docs):
 def automodel(doctype):
 	"""return doctype template"""
 	pass
-
-def get_doclink(name):
-	"""Returns `__doclink__` property of a module or DocType if exists"""
-	if "." in name:
-		obj = frappe.get_attr(name)
-
-	else:
-		obj = get_controller(name)
-
-	if hasattr(obj, "__doclink__"):
-		return obj.__doclink__
-	else:
-		return ""

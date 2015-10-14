@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -8,6 +8,7 @@ Syncs a database table to the `DocType` (metadata)
 .. note:: This module is only used internally
 
 """
+import re
 import os
 import frappe
 from frappe import _
@@ -23,8 +24,8 @@ type_map = {
 	,'Check':		('int', '1')
 	,'Small Text':	('text', '')
 	,'Long Text':	('longtext', '')
-	,'Code':		('text', '')
-	,'Text Editor':	('text', '')
+	,'Code':		('longtext', '')
+	,'Text Editor':	('longtext', '')
 	,'Date':		('date', '')
 	,'Datetime':	('datetime', '6')
 	,'Time':		('time', '6')
@@ -36,12 +37,13 @@ type_map = {
 	,'Select':		('varchar', '255')
 	,'Read Only':	('varchar', '255')
 	,'Attach':		('varchar', '255')
+	,'Attach Image':('varchar', '255')
 }
 
 default_columns = ['name', 'creation', 'modified', 'modified_by', 'owner',
 	'docstatus', 'parent', 'parentfield', 'parenttype', 'idx']
 
-default_shortcuts = ['_Login', '__user', '_Full Name', 'Today', '__today']
+default_shortcuts = ['_Login', '__user', '_Full Name', 'Today', '__today', "now", "Now"]
 
 def updatedb(dt):
 	"""
@@ -73,7 +75,6 @@ class DbTable:
 
 		self.add_index = []
 		self.drop_index = []
-
 		self.set_default = []
 
 		# load
@@ -110,7 +111,9 @@ class DbTable:
 			idx int(8),
 			%sindex parent(parent))
 			ENGINE=InnoDB
-			CHARACTER SET=utf8""" % (self.name, add_text))
+			ROW_FORMAT=COMPRESSED
+			CHARACTER SET=utf8mb4
+			COLLATE=utf8mb4_unicode_ci""" % (self.name, add_text))
 
 	def get_column_definitions(self):
 		column_list = [] + default_columns
@@ -137,8 +140,9 @@ class DbTable:
 		"""
 		fl = frappe.db.sql("SELECT * FROM tabDocField WHERE parent = %s", self.doctype, as_dict = 1)
 		precisions = {}
+		uniques = {}
 
-		if not frappe.flags.in_install:
+		if not frappe.flags.in_install_db and frappe.flags.in_install != "frappe":
 			custom_fl = frappe.db.sql("""\
 				SELECT * FROM `tabCustom Field`
 				WHERE dt = %s AND docstatus < 2""", (self.doctype,), as_dict=1)
@@ -149,10 +153,15 @@ class DbTable:
 				filters={"doc_type": self.doctype, "doctype_or_field": "DocField", "property": "precision"}):
 					precisions[ps.field_name] = ps.value
 
+			# apply unique from property setters
+			for ps in frappe.get_all("Property Setter", fields=["field_name", "value"],
+				filters={"doc_type": self.doctype, "doctype_or_field": "DocField", "property": "unique"}):
+					uniques[ps.field_name] = cint(ps.value)
+
 		for f in fl:
 			self.columns[f['fieldname']] = DbColumn(self, f['fieldname'],
 				f['fieldtype'], f.get('length'), f.get('default'), f.get('search_index'),
-				f.get('options'), f.get('unique'), precisions.get(f['fieldname']) or f.get('precision'))
+				f.get('options'), uniques.get(f["fieldname"], f.get('unique')), precisions.get(f['fieldname']) or f.get('precision'))
 
 	def get_columns_from_db(self):
 		self.show_columns = frappe.db.sql("desc `%s`" % self.name)
@@ -222,7 +231,10 @@ class DbTable:
 			if col.fieldname=="name":
 				continue
 
-			if not col.default:
+			if col.fieldtype=="Check":
+				col_default = cint(col.default)
+
+			elif not col.default:
 				col_default = "null"
 			else:
 				col_default = '"{}"'.format(col.default.replace('"', '\\"'))
@@ -230,7 +242,17 @@ class DbTable:
 			query.append('alter column `{}` set default {}'.format(col.fieldname, col_default))
 
 		if query:
-			frappe.db.sql("alter table `{}` {}".format(self.name, ", ".join(query)))
+			try:
+				frappe.db.sql("alter table `{}` {}".format(self.name, ", ".join(query)))
+			except Exception, e:
+				# sanitize
+				if e.args[0]==1060:
+					frappe.throw(str(e))
+				elif e.args[0]==1062:
+					fieldname = str(e).split("'")[-2]
+					frappe.throw(_("{0} field cannot be set as unique in {1}, as there are non-unique existing values".format(fieldname, self.name)))
+				else:
+					raise e
 
 class DbColumn:
 	def __init__(self, table, fieldname, fieldtype, length, default,
@@ -248,11 +270,18 @@ class DbColumn:
 	def get_definition(self, with_default=1):
 		column_def = get_definition(self.fieldtype, self.precision)
 
-		if self.default and (self.default not in default_shortcuts) \
-			and not self.default.startswith(":") and column_def not in ['text', 'longtext']:
+		if not column_def:
+			return column_def
+
+		if self.fieldtype=="Check":
+			default_value = cint(self.default) or 0
+			column_def += ' not null default {0}'.format(default_value)
+
+		elif self.default and (self.default not in default_shortcuts) \
+			and not self.default.startswith(":") and column_def not in ('text', 'longtext'):
 			column_def += ' default "' + self.default.replace('"', '\"') + '"'
 
-		if self.unique:
+		if self.unique and (column_def not in ('text', 'longtext')):
 			column_def += ' unique'
 
 		return column_def
@@ -271,20 +300,11 @@ class DbColumn:
 			return
 
 		# type
-		if (current_def['type'] != column_def) or (self.unique and not current_def['unique']):
+		if (current_def['type'] != column_def) or \
+			((self.unique and not current_def['unique']) and column_def not in ('text', 'longtext')):
 			self.table.change_type.append(self)
 
 		else:
-			# index
-			if (current_def['index'] and not self.set_index):
-				self.table.drop_index.append(self)
-
-			if (current_def['unique'] and not self.unique):
-				self.table.drop_index.append(self)
-
-			if (not current_def['index'] and self.set_index and not (column_def in ['text', 'longtext'])):
-				self.table.add_index.append(self)
-
 			# default
 			if (self.default_changed(current_def) \
 				and (self.default not in default_shortcuts) \
@@ -292,16 +312,44 @@ class DbColumn:
 				and not (column_def in ['text','longtext'])):
 				self.table.set_default.append(self)
 
+		# index should be applied or dropped irrespective of type change
+		if ( (current_def['index'] and not self.set_index and not self.unique)
+			or (current_def['unique'] and not self.unique) ):
+			# to drop unique you have to drop index
+			self.table.drop_index.append(self)
 
+		elif (not current_def['index'] and self.set_index) and not (column_def in ('text', 'longtext')):
+			self.table.add_index.append(self)
 
 	def default_changed(self, current_def):
 		if "decimal" in current_def['type']:
-			try:
-				return float(current_def['default'])!=float(self.default)
-			except TypeError:
-				return True
+			return self.default_changed_for_decimal(current_def)
 		else:
 			return current_def['default'] != self.default
+
+	def default_changed_for_decimal(self, current_def):
+		try:
+			if current_def['default'] in ("", None) and self.default in ("", None):
+				# both none, empty
+				return False
+
+			elif current_def['default'] in ("", None):
+				try:
+					# check if new default value is valid
+					float(self.default)
+					return True
+				except ValueError:
+					return False
+
+			elif self.default in ("", None):
+				# new default value is empty
+				return True
+
+			else:
+				# NOTE float() raise ValueError when "" or None is passed
+				return float(current_def['default'])!=float(self.default)
+		except TypeError:
+			return True
 
 class DbManager:
 	"""
@@ -401,12 +449,11 @@ class DbManager:
 
 def validate_column_name(n):
 	n = n.replace(' ','_').strip().lower()
-	import re
-	if re.search("[\W]", n):
-		frappe.throw(_("Fieldname {0} cannot contain letters, numbers or spaces").format(n), InvalidColumnName)
+	special_characters = re.findall("[\W]", n, re.UNICODE)
+	if special_characters:
+		special_characters = ", ".join('"{0}"'.format(c) for c in special_characters)
+		frappe.throw(_("Fieldname {0} cannot have special characters like {1}").format(cstr(n), special_characters), InvalidColumnName)
 	return n
-
-
 
 def remove_all_foreign_keys():
 	frappe.db.sql("set foreign_key_checks = 0")
@@ -443,4 +490,3 @@ def add_column(doctype, column_name, fieldtype, precision=None):
 	frappe.db.commit()
 	frappe.db.sql("alter table `tab%s` add column %s %s" % (doctype,
 		column_name, get_definition(fieldtype, precision)))
-

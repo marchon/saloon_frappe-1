@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -43,11 +43,12 @@ class TestCustomizeForm(unittest.TestCase):
 
 		d = self.get_customize_form("Event")
 		self.assertEquals(d.doc_type, "Event")
-		self.assertEquals(len(d.get("fields")), 30)
+		self.assertEquals(len(d.get("fields")), 28)
 
 		d = self.get_customize_form("User")
 		self.assertEquals(d.doc_type, "User")
-		self.assertEquals(len(d.get("fields")), 55)
+
+		self.assertEquals(len(d.get("fields")), len(frappe.get_doc("DocType", d.doc_type).fields) + 1)
 		self.assertEquals(d.get("fields")[-1].fieldname, "test_custom_field")
 		self.assertEquals(d.get("fields", {"fieldname": "location"})[0].in_list_view, 1)
 
@@ -108,7 +109,7 @@ class TestCustomizeForm(unittest.TestCase):
 		location_field.reqd = 0
 		d.run_method("save_customization")
 		self.assertEquals(frappe.db.get_value("Property Setter",
-			{"doc_type": "User", "property": "reqd", "field_name": "location"}, "value"), '0')
+			{"doc_type": "User", "property": "reqd", "field_name": "location"}, "value"), None)
 
 	def test_save_customization_custom_field_property(self):
 		d = self.get_customize_form("User")
@@ -155,7 +156,7 @@ class TestCustomizeForm(unittest.TestCase):
 		d.doc_type = "User"
 		d.run_method('reset_to_defaults')
 
-		self.assertEquals(d.get("fields", {"fieldname": "location"})[0].in_list_view, None)
+		self.assertEquals(d.get("fields", {"fieldname": "location"})[0].in_list_view, 0)
 
 		frappe.local.test_objects["Property Setter"] = []
 		make_test_records_for_doctype("Property Setter")

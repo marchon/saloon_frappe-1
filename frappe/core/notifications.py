@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -6,6 +6,10 @@ import frappe
 
 def get_notification_config():
 	return {
+		"for_doctype": {
+			"Scheduler Log": {"seen": 0},
+			"Communication": {"status": "Open"}
+		},
 		"for_module_doctypes": {
 			"ToDo": "To Do",
 			"Event": "Calendar",
@@ -42,4 +46,4 @@ def get_unread_messages():
 		WHERE comment_doctype IN ('My Company', 'Message')
 		AND comment_docname = %s
 		AND ifnull(docstatus,0)=0
-		""", (frappe.user.name,))[0][0]
+		""", (frappe.session.user,))[0][0]

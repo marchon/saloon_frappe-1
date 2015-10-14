@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -61,6 +61,10 @@ def validate_link():
 def add_comment(doc):
 	"""allow any logged user to post a comment"""
 	doc = frappe.get_doc(json.loads(doc))
+
+	if doc.doctype != "Comment":
+		frappe.throw(_("This method can only be used to create a Comment"), frappe.PermissionError)
+
 	doc.insert(ignore_permissions = True)
 
 	return doc.as_dict()
@@ -140,6 +144,9 @@ def get_linked_docs(doctype, name, metadata_loaded=None, no_metadata=False):
 						filters=[[dt, link.get("fieldname"), '=', name]])
 
 			except frappe.PermissionError:
+				if frappe.local.message_log:
+					frappe.local.message_log.pop()
+
 				continue
 
 			if ret:

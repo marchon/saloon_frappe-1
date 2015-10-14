@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 // new re-factored Listing object
@@ -108,27 +108,44 @@ frappe.ui.Listing = Class.extend({
 		}
 
 		// new
-		if(this.new_doctype) {
-			var make_new_doc = function() { (me.custom_new_doc || me.make_new_doc).apply(me, [me.new_doctype]); };
-			this.page.set_primary_action(__("New"), function() { make_new_doc(); }, "octicon octicon-plus");
-		}
+		this.set_primary_action();
 
 		if(me.no_toolbar || me.hide_toolbar) {
 			me.$w.find('.list-toolbar-wrapper').toggle(false);
 		}
 	},
 
+	set_primary_action: function() {
+		var me = this;
+		if(this.new_doctype) {
+			if(this.listview.settings.set_primary_action){
+				this.listview.settings.set_primary_action(this);
+			} else {
+				this.page.set_primary_action(__("New"), function() {
+					me.make_new_doc(me.new_doctype); }, "octicon octicon-plus");
+			}
+		} else {
+			this.page.clear_primary_action();
+		}
+	},
+
 	make_new_doc: function(doctype) {
 		var me = this;
 		frappe.model.with_doctype(doctype, function() {
-			var doc = frappe.model.get_new_doc(doctype);
-			if(me.filter_list) {
-				$.each(me.filter_list.get_filters(), function(i, f) {
-					if(f[0]===doctype && f[2]==="=" && f[1]!=="name")
-						doc[f[1]]=f[3];
-				})
+			if(me.custom_new_doc) {
+				me.custom_new_doc(doctype);
+			} else {
+				var doc = frappe.model.get_new_doc(doctype);
+				if(me.filter_list) {
+					frappe.route_options = {};
+					$.each(me.filter_list.get_filters(), function(i, f) {
+						if(f[2]==="=" && !in_list(frappe.model.std_fields_list, f[1])) {
+							frappe.route_options[f[1]] = f[3];
+						}
+					});
+				}
+				frappe.set_route("Form", doctype, doc.name);
 			}
-			frappe.set_route("Form", doctype, doc.name);
 		});
 	},
 
@@ -164,6 +181,7 @@ frappe.ui.Listing = Class.extend({
 		return frappe.call({
 			method: this.opts.method || 'frappe.desk.query_builder.runquery',
 			type: "GET",
+			freeze: (this.opts.freeze != undefined ? this.opts.freeze : true),
 			args: this.get_call_args(),
 			callback: function(r) {
 				if(!me.opts.no_loading)

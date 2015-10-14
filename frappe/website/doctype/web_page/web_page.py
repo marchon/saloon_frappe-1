@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -11,13 +11,16 @@ from frappe.website.utils import find_first_image, get_comment_list
 from markdown2 import markdown
 from frappe.utils.jinja import render_template
 from jinja2.exceptions import TemplateSyntaxError
+from frappe.utils import strip_html
 
 class WebPage(WebsiteGenerator):
 	save_versions = True
-	template = "templates/generators/web_page.html"
-	condition_field = "published"
-	page_title_field = "title"
-	parent_website_route_field = "parent_web_page"
+	website = frappe._dict(
+		template = "templates/generators/web_page.html",
+		condition_field = "published",
+		page_title_field = "title",
+		parent_website_route_field = "parent_web_page"
+	)
 
 	def get_feed(self):
 		return self.title
@@ -35,8 +38,17 @@ class WebPage(WebsiteGenerator):
 		if self.enable_comments:
 			context.comment_list = get_comment_list(self.doctype, self.name)
 
+		# for sidebar and breadcrumbs
+		context.children = self.get_children()
+		context.parents = self.get_parents(context)
+
 		if self.template_path:
 			# render dynamic context (if .py file exists)
+
+			# get absolute template path considering first fragment as app name
+			split_path = self.template_path.split(os.sep)
+			self.template_path = os.path.join(frappe.get_app_path(split_path[0]), *split_path[1:])
+
 			context = self.get_dynamic_context(frappe._dict(context))
 
 			# load content from template
@@ -44,17 +56,19 @@ class WebPage(WebsiteGenerator):
 		else:
 			context.update({
 				"style": self.css or "",
-				"script": self.javascript or ""
+				"script": self.javascript or "",
+				"header": self.header,
+				"title": self.title,
+				"text_align": self.text_align,
 			})
 
+			if self.description:
+				context.setdefault("metatags", {})["description"] = self.description
+
+			if not self.show_title:
+				context["no_header"] = 1
+
 		self.set_metatags(context)
-
-		if not context.header:
-			context.header = self.title
-
-		# for sidebar
-		if not context.children:
-			context.children = self.get_children()
 
 		return context
 
@@ -72,6 +86,7 @@ class WebPage(WebsiteGenerator):
 					raise
 
 	def get_static_content(self, context):
+
 		with open(self.template_path, "r") as contentfile:
 			content = unicode(contentfile.read(), 'utf-8')
 
@@ -99,7 +114,7 @@ class WebPage(WebsiteGenerator):
 			fpath = self.template_path.rsplit(".", 1)[0] + "." + extn
 			if os.path.exists(fpath):
 				with open(fpath, "r") as f:
-					context["css" if extn=="css" else "javascript"] = f.read()
+					context["style" if extn=="css" else "script"] = f.read()
 
 	def check_for_redirect(self, context):
 		if "<!-- redirect:" in context.main_section:
@@ -131,12 +146,28 @@ class WebPage(WebsiteGenerator):
 	def set_metatags(self, context):
 		context.metatags = {
 			"name": context.title,
-			"description": context.description or (context.main_section or "")[:150]
+			"description": (context.description or context.main_section or "").replace("\n", " ")[:500]
 		}
 
 		image = find_first_image(context.main_section or "")
 		if image:
 			context.metatags["image"] = image
+
+# def get_list_context(context=None):
+# 	list_context = frappe._dict(
+# 		title = _("Website Search"),
+# 		template = "templates/includes/kb_list.html",
+# 		row_template = "templates/includes/kb_row.html",
+# 		get_level_class = get_level_class,
+# 		hide_filters = True,
+# 		filters = {"published": 1}
+# 	)
+#
+# 	if frappe.local.form_dict.txt:
+# 		list_context.subtitle = _('Filtered by "{0}"').format(frappe.local.form_dict.txt)
+# 	#
+# 	# list_context.update(frappe.get_doc("Blog Settings", "Blog Settings").as_dict())
+# 	return list_context
 
 def check_broken_links():
 	cnt = 0

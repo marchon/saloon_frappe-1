@@ -1,44 +1,36 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
-
-frappe.ui.toolbar.Search = frappe.ui.toolbar.SelectorDialog.extend({
-	init: function() {
-		this._super({
-			title: __("Search"),
-			execute: function(val) {
-				frappe.set_route("List", val, {"name": "%"});
-			},
-			help: __("Shortcut") + ": Ctrl+G"
-		});
-
-		// get new types
-		this.set_values(frappe.boot.user.can_search.join(',').split(','));
-	}
-});
 
 frappe.search = {
 	setup: function() {
-		$("#navbar-search, #sidebar-search").autocomplete({
+		var opts = {
+			autoFocus: true,
 			minLength: 0,
 			source: function(request, response) {
 				var txt = strip(request.term);
-				if(!txt) return;
-				var lower = strip(txt.toLowerCase());
 				frappe.search.options = [];
-				$.each(frappe.search.verbs, function(i, action) {
-					action(lower);
-				});
+				if(txt) {
+					var lower = strip(txt.toLowerCase());
+					$.each(frappe.search.verbs, function(i, action) {
+						action(lower);
+					});
+				}
 
 				// sort options
 				frappe.search.options.sort(function(a, b) {
-					return a.match.length - b.match.length; });
+					return (a.match || "").length - (b.match || "").length; });
+
+				frappe.search.add_recent("");
 
 				frappe.search.add_help();
 
 				response(frappe.search.options);
 			},
-			focus: function(event, ui) {
-				return false;
+			open: function(event, ui) {
+				frappe.search.autocomplete_open = event.target;
+			},
+			close: function(event, ui) {
+				frappe.search.autocomplete_open = false;
 			},
 			select: function(event, ui) {
 				if(ui.item.route_options) {
@@ -53,38 +45,80 @@ frappe.search = {
 				$(this).val('');
 				return false;
 			}
-		}).data('ui-autocomplete')._renderItem = function(ul, d) {
-			var html = "<span>" + __(d.value) + "</span>";
-			if(d.description && d.value!==d.description) {
-				html += '<br><span class="text-muted">' + __(d.description) + '</span>';
-			}
-			return $('<li></li>')
-				.data('item.autocomplete', d)
-				.html('<a><p>' + html + '</p></a>')
-				.appendTo(ul);
 		};
 
+
+		var open_recent = function() {
+			if (!frappe.search.autocomplete_open) {
+				$(this).autocomplete("search", "");
+			}
+		}
+
+		$("#navbar-search")
+			.on("focus", open_recent)
+			.autocomplete(opts).data('ui-autocomplete')._renderItem =
+				frappe.search.render_item;
+
+		$("#sidebar-search")
+			.on("focus", open_recent)
+			.autocomplete(opts).data('ui-autocomplete')._renderItem =
+				frappe.search.render_item;
+
 		frappe.search.make_page_title_map();
+		frappe.search.setup_recent();
+	},
+	render_item: function(ul, d) {
+		var html = "<span>" + __(d.label || d.value) + "</span>";
+		if(d.description && d.value!==d.description) {
+			html += '<br><span class="text-muted">' + __(d.description) + '</span>';
+		}
+		return $('<li></li>')
+			.data('item.autocomplete', d)
+			.html('<a><p>' + html + '</p></a>')
+			.appendTo(ul);
 	},
 	add_help: function() {
 		frappe.search.options.push({
-			value: __("Help on Search"),
+			label: __("Help on Search"),
 			onclick: function() {
 				var txt = '<table class="table table-bordered">\
 					<tr><td style="width: 50%">'+__("Make a new record")+'</td><td>'+
-						__("<b>new</b> <i>type of document</i>")+'</td></tr>\
+						__("new type of document")+'</td></tr>\
 					<tr><td>'+__("List a document type")+'</td><td>'+
-						__("<i>document type...</i>, e.g. <b>customer</b>")+'</td></tr>\
+						__("document type..., e.g. customer")+'</td></tr>\
 					<tr><td>'+__("Search in a document type")+'</td><td>'+
-						__("<i>text</i> <b>in</b> <i>document type</i>")+'</td></tr>\
+						__("text in document type")+'</td></tr>\
 					<tr><td>'+__("Open a module or tool")+'</td><td>'+
-						__("<i>module name...</i>")+'</td></tr>\
+						__("module name...")+'</td></tr>\
 					<tr><td>'+__("Calculate")+'</td><td>'+
-						__("<i>e.g. <strong>(55 + 434) / 4</strong> or <strong>=Math.sin(Math.PI/2)</strong>...</i>")+'</td></tr>\
+						__("e.g. (55 + 434) / 4 or =Math.sin(Math.PI/2)...")+'</td></tr>\
 				</table>'
 				msgprint(txt, "Search Help");
 			}
 		});
+	},
+	add_recent: function(txt) {
+		var doctypes = frappe.utils.unique(keys(locals).concat(keys(frappe.search.recent)));
+		for(var i in doctypes) {
+			var doctype = doctypes[i];
+			if(doctype[0]!==":" && !frappe.model.is_table(doctype)
+				&& !in_list(frappe.boot.single_types, doctype)
+				&& !in_list(["DocType", "DocField", "DocPerm", "Page", "Country",
+					"Currency", "Page Role", "Print Format"], doctype)) {
+
+				var values = frappe.utils.remove_nulls(frappe.utils.unique(
+					keys(locals[doctype]).concat(frappe.search.recent[doctype] || [])
+				));
+
+				var ret = frappe.search.find(values, txt, function(match) {
+					return {
+						label: __(doctype) + " <b>" + match + "</b>",
+						value: __(doctype) + " " + match,
+						route: ["Form", doctype, match]
+					}
+				});
+			}
+		}
 	},
 	make_page_title_map: function() {
 		frappe.search.pages = {};
@@ -92,6 +126,19 @@ frappe.search = {
 			frappe.search.pages[p.title] = p;
 			p.name = name;
 		});
+	},
+	setup_recent: function() {
+		var recent = JSON.parse(frappe.boot.user.recent || "[]") || [];
+		frappe.search.recent = {};
+		for (var i=0, l=recent.length; i < l; i++) {
+			var d = recent[i];
+			if (!(d[0] && d[1])) continue;
+
+			if (!frappe.search.recent[d[0]]) {
+				frappe.search.recent[d[0]] = [];
+			}
+			frappe.search.recent[d[0]].push(d[1]);
+		}
 	},
 	find: function(list, txt, process) {
 		$.each(list, function(i, item) {
@@ -110,30 +157,20 @@ frappe.search.verbs = [
 	function(txt) {
 		var route = frappe.get_route();
 		if(route[0]==="List" && txt.indexOf(" in") === -1) {
+			// search in title field
+			var meta = frappe.get_meta(frappe.container.page.doclistview.doctype);
+			var search_field = meta.title_field || "name";
+			var options = {};
+			options[search_field] = ["like", "%" + txt + "%"];
 			frappe.search.options.push({
-				value: __('Find {0} in {1}', ["<b>"+txt+"</b>", "<b>" + route[1] + "</b>"]),
-				route_options: {"name": ["like", "%" + txt + "%"]},
+				label: __('Find {0} in {1}', ["<b>"+txt+"</b>", "<b>" + route[1] + "</b>"]),
+				value: __('Find {0} in {1}', [txt, route[1]]),
+				route_options: options,
 				onclick: function() {
-					frappe.container.page.doclistview.set_route_options();
+					cur_list.refresh();
 				},
 				match: txt
 			});
-		}
-	},
-
-	// recent
-	function(txt) {
-		for(var doctype in locals) {
-			if(doctype[0]!==":" && !frappe.model.is_table(doctype)
-				&& !in_list(frappe.boot.single_types, doctype)
-				&& doctype !== "DocType") {
-				var ret = frappe.search.find(keys(locals[doctype]), txt, function(match) {
-					return {
-						value: __(doctype) + " <b>" + match + "</b>",
-						route: ["Form", doctype, match]
-					}
-				});
-			}
 		}
 	},
 
@@ -143,7 +180,8 @@ frappe.search.verbs = [
 		if(txt.split(" ")[0]==="new") {
 			frappe.search.find(frappe.boot.user.can_create, txt.substr(4), function(match) {
 				return {
-					value:__("New {0}", ["<b>"+match+"</b>"]),
+					label: __("New {0}", ["<b>"+match+"</b>"]),
+					value: __("New {0}", [match]),
 					onclick: function() { new_doc(match); }
 				}
 			});
@@ -155,14 +193,28 @@ frappe.search.verbs = [
 		frappe.search.find(frappe.boot.user.can_read, txt, function(match) {
 			if(in_list(frappe.boot.single_types, match)) {
 				return {
-					value: __("{0}", ["<b>"+__(match)+"</b>"]),
+					label: __("{0}", ["<b>"+__(match)+"</b>"]),
+					value: __(match),
 					route:["Form", match, match]
 				}
 			} else {
 				return {
-					value: __("{0} List", ["<b>"+__(match)+"</b>"]),
+					label: __("{0} List", ["<b>"+__(match)+"</b>"]),
+					value: __("{0} List", [__(match)]),
 					route:["List", match]
 				}
+			}
+		});
+	},
+
+	// reports
+	function(txt) {
+		frappe.search.find(keys(frappe.boot.user.all_reports), txt, function(match) {
+			var report_type = frappe.boot.user.all_reports[match];
+			return {
+				label: __("Open {0}", ["<b>"+__(match)+"</b>"]),
+				value: __("Open {0}", [__(match)]),
+				route: [report_type=="Report Builder" ? "Report" : "query-report", match]
 			}
 		});
 	},
@@ -171,7 +223,8 @@ frappe.search.verbs = [
 	function(txt) {
 		frappe.search.find(keys(frappe.search.pages), txt, function(match) {
 			return {
-				value: __("Open {0}", ["<b>"+__(match)+"</b>"]),
+				label: __("Report {0}", ["<b>"+__(match)+"</b>"]),
+				value: __("Report {0}", [__(match)]),
 				route: [frappe.search.pages[match].route || frappe.search.pages[match].name]
 			}
 		});
@@ -181,7 +234,8 @@ frappe.search.verbs = [
 	function(txt) {
 		frappe.search.find(keys(frappe.modules), txt, function(match) {
 			ret = {
-				value: __("Open {0}", ["<b>"+__(match)+"</b>"]),
+				label: __("Open {0}", ["<b>"+__(match)+"</b>"]),
+				value: __("Open {0}", [__(match)]),
 			}
 			if(frappe.modules[match].link) {
 				ret.route = [frappe.modules[match].link];
@@ -198,7 +252,8 @@ frappe.search.verbs = [
 			parts = txt.split(" in ");
 			frappe.search.find(frappe.boot.user.can_read, parts[1], function(match) {
 				return {
-					value: __('Find {0} in {1}', ["<b>"+__(parts[0])+"</b>", "<b>"+__(match)+"</b>"]),
+					label: __('Find {0} in {1}', ["<b>"+__(parts[0])+"</b>", "<b>"+__(match)+"</b>"]),
+					value: __('Find {0} in {1}', [__(parts[0]), __(match)]),
 					route_options: {"name": ["like", "%" + parts[0] + "%"]},
 					route: ["List", match]
 				}
@@ -216,11 +271,13 @@ frappe.search.verbs = [
 
 			try {
 				var val = eval(txt);
+				var formatted_value = __('{0} = {1}', [txt, "<b>"+val+"</b>"]);
 				frappe.search.options.push({
-					value: $.format('{0} = {1}', [txt, "<b>"+val+"</b>"]),
+					label: formatted_value,
+					value: __('{0} = {1}', [txt, val]),
 					match: val,
 					onclick: function(match) {
-						msgprint(match, "Result");
+						msgprint(formatted_value, "Result");
 					}
 				});
 			} catch(e) {
@@ -228,5 +285,5 @@ frappe.search.verbs = [
 			}
 
 		};
-	},
+	}
 ];

@@ -1,21 +1,20 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
 import frappe
-from frappe import throw, _
 from frappe.utils.pdf import get_pdf
 from frappe.email.smtp import get_outgoing_email_account
-from frappe.utils import get_url, scrub_urls
+from frappe.utils import get_url, scrub_urls, strip, expand_relative_urls, cint, split_emails
 import email.utils
 from markdown2 import markdown
 
 def get_email(recipients, sender='', msg='', subject='[No Subject]',
 	text_content = None, footer=None, print_html=None, formatted=None, attachments=None,
-	content=None, reply_to=None):
+	content=None, reply_to=None, cc=()):
 	"""send an html email as multipart with attachments and all"""
 	content = content or msg
-	emailobj = EMail(sender, recipients, subject, reply_to=reply_to)
+	emailobj = EMail(sender, recipients, subject, reply_to=reply_to, cc=cc)
 
 	if not content.strip().startswith("<"):
 		content = markdown(content)
@@ -36,17 +35,17 @@ class EMail:
 	Also provides a clean way to add binary `FileData` attachments
 	Also sets all messages as multipart/alternative for cleaner reading in text-only clients
 	"""
-	def __init__(self, sender='', recipients=(), subject='', alternative=0, reply_to=None):
+	def __init__(self, sender='', recipients=(), subject='', alternative=0, reply_to=None, cc=()):
 		from email.mime.multipart import MIMEMultipart
 		from email import Charset
 		Charset.add_charset('utf-8', Charset.QP, Charset.QP, 'utf-8')
 
 		if isinstance(recipients, basestring):
 			recipients = recipients.replace(';', ',').replace('\n', '')
-			recipients = recipients.split(',')
+			recipients = split_emails(recipients)
 
 		# remove null
-		recipients = filter(None, (r.strip() for r in recipients))
+		recipients = filter(None, (strip(r) for r in recipients))
 
 		self.sender = sender
 		self.reply_to = reply_to or sender
@@ -56,7 +55,7 @@ class EMail:
 		self.msg_root = MIMEMultipart('mixed')
 		self.msg_multipart = MIMEMultipart('alternative')
 		self.msg_root.attach(self.msg_multipart)
-		self.cc = []
+		self.cc = cc or []
 		self.html_set = False
 
 	def set_html(self, message, text_content = None, footer=None, print_html=None, formatted=None):
@@ -68,9 +67,9 @@ class EMail:
 		# convert to text well
 		if not self.html_set:
 			if text_content:
-				self.set_text(text_content)
+				self.set_text(expand_relative_urls(text_content))
 			else:
-				self.set_html_as_text(formatted)
+				self.set_html_as_text(expand_relative_urls(formatted))
 
 		self.set_part_html(formatted)
 		self.html_set = True
@@ -161,39 +160,39 @@ class EMail:
 	def add_pdf_attachment(self, name, html, options=None):
 		self.add_attachment(name, get_pdf(html, options), 'application/octet-stream')
 
+	def get_default_sender(self):
+		email_account = get_outgoing_email_account()
+		return email.utils.formataddr((email_account.name, email_account.get("sender") or email_account.get("email_id")))
+
 	def validate(self):
 		"""validate the email ids"""
 		from frappe.utils import validate_email_add
-		def _validate(email):
-			"""validate an email field"""
-			if email and not validate_email_add(email):
-				throw(_("{0} is not a valid email id").format(email), frappe.InvalidEmailAddressError)
-			return email
 
 		if not self.sender:
-			email_account = get_outgoing_email_account()
-			self.sender = "{0} <{1}>".format(email_account.name, email_account.email_id)
+			self.sender = self.get_default_sender()
 
-		self.sender = _validate(self.sender)
-		self.reply_to = _validate(self.reply_to)
+		validate_email_add(strip(self.sender), True)
+		self.reply_to = validate_email_add(strip(self.reply_to) or self.sender, True)
+
+		self.recipients = [strip(r) for r in self.recipients]
+		self.cc = [strip(r) for r in self.cc]
 
 		for e in self.recipients + (self.cc or []):
-			_validate(e.strip())
+			validate_email_add(e, True)
 
 	def set_message_id(self, message_id):
 		self.msg_root["Message-Id"] = "<{0}@{1}>".format(message_id, frappe.local.site)
 
 	def make(self):
 		"""build into msg_root"""
-
 		headers = {
-			"Subject":        self.subject.encode("utf-8"),
+			"Subject":        strip(self.subject).encode("utf-8"),
 			"From":           self.sender.encode("utf-8"),
-			"To":             ', '.join([r.strip() for r in self.recipients]).encode("utf-8"),
+			"To":             ', '.join(self.recipients).encode("utf-8"),
 			"Date":           email.utils.formatdate(),
 			"Reply-To":       self.reply_to.encode("utf-8") if self.reply_to else None,
-			"CC":             ', '.join([r.strip() for r in self.cc]).encode("utf-8") if self.cc else None,
-			b'X-Frappe-Site': get_url().encode('utf-8')
+			"CC":             ', '.join(self.cc).encode("utf-8") if self.cc else None,
+			b'X-Frappe-Site': get_url().encode('utf-8'),
 		}
 
 		# reset headers as values may be changed.
@@ -201,6 +200,10 @@ class EMail:
 			if self.msg_root.has_key(key):
 				del self.msg_root[key]
 			self.msg_root[key] = val
+
+		# call hook to enable apps to modify msg_root before sending
+		for hook in frappe.get_hooks("make_email_body_message"):
+			frappe.get_attr(hook)(self)
 
 	def as_string(self):
 		"""validate, build message and convert to string"""
@@ -212,9 +215,11 @@ def get_formatted_html(subject, message, footer=None, print_html=None):
 	# imported here to avoid cyclic import
 
 	message = scrub_urls(message)
+	email_account = get_outgoing_email_account(False)
 	rendered_email = frappe.get_template("templates/emails/standard.html").render({
 		"content": message,
-		"footer": get_footer(footer),
+		"signature": get_signature(email_account),
+		"footer": get_footer(email_account, footer),
 		"title": subject,
 		"print_html": print_html,
 		"subject": subject
@@ -222,21 +227,29 @@ def get_formatted_html(subject, message, footer=None, print_html=None):
 
 	return rendered_email
 
-def get_footer(footer=None):
+def get_signature(email_account):
+	if email_account and email_account.add_signature and email_account.signature:
+		return "<br><br>" + email_account.signature
+	else:
+		return ""
+
+def get_footer(email_account, footer=None):
 	"""append a footer (signature)"""
 	footer = footer or ""
 
-	email_account = get_outgoing_email_account(False)
-
-	if email_account and email_account.add_signature and email_account.signature:
-		footer += email_account.signature
-
 	if email_account and email_account.footer:
-		footer += email_account.footer
-	else:
-		for default_mail_footer in frappe.get_hooks("default_mail_footer"):
-			footer += default_mail_footer
+		footer += '<div style="margin: 15px auto;">{0}</div>'.format(email_account.footer)
 
 	footer += "<!--unsubscribe link here-->"
+
+	company_address = frappe.db.get_default("email_footer_address")
+
+	if company_address:
+		footer += '<div style="margin: 15px auto; text-align: center; color: #8d99a6">{0}</div>'\
+			.format(company_address.replace("\n", "<br>"))
+
+	if not cint(frappe.db.get_default("disable_standard_email_footer")):
+		for default_mail_footer in frappe.get_hooks("default_mail_footer"):
+			footer += '<div style="margin: 15px auto;">{0}</div>'.format(default_mail_footer)
 
 	return footer

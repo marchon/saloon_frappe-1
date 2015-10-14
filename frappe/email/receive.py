@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -6,13 +6,16 @@ import time
 import _socket, poplib
 import frappe
 from frappe import _
-from frappe.utils import extract_email_id, convert_utc_to_user_timezone, now, cint
+from frappe.utils import extract_email_id, convert_utc_to_user_timezone, now, cint, cstr, strip
 from frappe.utils.scheduler import log
 from email_reply_parser import EmailReplyParser
+from email.header import decode_header
+from frappe.utils.file_manager import get_random_filename
 
 class EmailSizeExceededError(frappe.ValidationError): pass
 class EmailTimeoutError(frappe.ValidationError): pass
 class TotalSizeExceededError(frappe.ValidationError): pass
+class LoginLimitExceeded(frappe.ValidationError): pass
 
 class POP3Server:
 	"""Wrapper for POP server to pull emails."""
@@ -41,28 +44,37 @@ class POP3Server:
 
 			self.pop.user(self.settings.username)
 			self.pop.pass_(self.settings.password)
+
+			# connection established!
+			return True
+
 		except _socket.error:
 			# Invalid mail server -- due to refusing connection
 			frappe.msgprint(_('Invalid Mail Server. Please rectify and try again.'))
 			raise
+
 		except poplib.error_proto, e:
-			if not "SYS/TEMP" in str(e):
+			if self.is_temporary_system_problem(e):
+				return False
+
+			else:
 				frappe.msgprint(_('Invalid User Name or Support Password. Please rectify and try again.'))
-			raise
+				raise
 
 	def get_messages(self):
 		"""Returns new email messages in a list."""
 		if not self.check_mails():
 			return # nothing to do
 
-		self.latest_messages = []
-
 		frappe.db.commit()
-		self.connect()
+
+		if not self.connect():
+			return []
 
 		try:
 			# track if errors arised
 			self.errors = False
+			self.latest_messages = []
 			pop_list = self.pop.list()[1]
 			num = num_copy = len(pop_list)
 
@@ -81,7 +93,7 @@ class POP3Server:
 
 				try:
 					self.retrieve_message(pop_meta, i+1)
-				except (TotalSizeExceededError, EmailTimeoutError):
+				except (TotalSizeExceededError, EmailTimeoutError, LoginLimitExceeded):
 					break
 
 			# WARNING: Mark as read - message number 101 onwards from the pop list
@@ -90,6 +102,14 @@ class POP3Server:
 			if num > 100 and not self.errors:
 				for m in xrange(101, num+1):
 					self.pop.dele(m)
+
+		except Exception, e:
+			if self.has_login_limit_exceeded(e):
+				pass
+
+			else:
+				raise
+
 		finally:
 			# no matter the exception, pop should quit if connected
 			self.pop.quit()
@@ -106,17 +126,36 @@ class POP3Server:
 
 		except (TotalSizeExceededError, EmailTimeoutError):
 			# propagate this error to break the loop
+			self.errors = True
 			raise
 
-		except:
-			# log performs rollback and logs error in scheduler log
-			log("receive.get_messages", self.make_error_msg(msg_num, incoming_mail))
-			self.errors = True
-			frappe.db.rollback()
+		except Exception, e:
+			if self.has_login_limit_exceeded(e):
+				self.errors = True
+				raise LoginLimitExceeded, e
 
-			self.pop.dele(msg_num)
+			else:
+				# log performs rollback and logs error in scheduler log
+				log("receive.get_messages", self.make_error_msg(msg_num, incoming_mail))
+				self.errors = True
+				frappe.db.rollback()
+
+				self.pop.dele(msg_num)
 		else:
 			self.pop.dele(msg_num)
+
+	def has_login_limit_exceeded(self, e):
+		return "-ERR Exceeded the login limit" in strip(cstr(e.message))
+
+	def is_temporary_system_problem(self, e):
+		messages = (
+			"-ERR [SYS/TEMP] Temporary system problem. Please try again later.",
+			"Connection timed out",
+		)
+		for message in messages:
+			if message in strip(cstr(e.message)) or message in strip(cstr(getattr(e, 'strerror', ''))):
+				return True
+		return False
 
 	def validate_pop(self, pop_meta):
 		# throttle based on email size
@@ -199,10 +238,10 @@ class Email:
 
 	def set_content_and_type(self):
 		self.content, self.content_type = '[Blank Email]', 'text/plain'
-		if self.text_content:
-			self.content, self.content_type = EmailReplyParser.parse_reply(self.text_content)
-		else:
+		if self.html_content:
 			self.content, self.content_type = self.html_content, 'text/html'
+		else:
+			self.content, self.content_type = EmailReplyParser.parse_reply(self.text_content), 'text/plain'
 
 	def process_part(self, part):
 		"""Parse email `part` and set it to `text_content`, `html_content` or `attachments`."""
@@ -235,25 +274,43 @@ class Email:
 			return part.get_payload()
 
 	def get_attachment(self, part, charset):
-		self.attachments.append({
-			'content-type': part.get_content_type(),
-			'filename': part.get_filename(),
-			'content': part.get_payload(decode=True),
-		})
+		fcontent = part.get_payload(decode=True)
+
+		if fcontent:
+			content_type = part.get_content_type()
+			fname = part.get_filename()
+			if fname:
+				try:
+					fname = cstr(decode_header(fname)[0][0])
+				except:
+					fname = get_random_filename(content_type=content_type)
+			else:
+				fname = get_random_filename(content_type=content_type)
+
+			self.attachments.append({
+				'content_type': content_type,
+				'fname': fname,
+				'fcontent': fcontent,
+			})
 
 	def save_attachments_in_doc(self, doc):
 		"""Save email attachments in given document."""
 		from frappe.utils.file_manager import save_file, MaxFileSizeReachedError
+		saved_attachments = []
+
 		for attachment in self.attachments:
 			try:
-				save_file(attachment['filename'], attachment['content'],
+				file_data = save_file(attachment['fname'], attachment['fcontent'],
 					doc.doctype, doc.name)
+				saved_attachments.append(file_data.file_name)
 			except MaxFileSizeReachedError:
 				# WARNING: bypass max file size exception
 				pass
 			except frappe.DuplicateEntryError:
 				# same file attached twice??
 				pass
+
+		return saved_attachments
 
 	def get_thread_id(self):
 		"""Extract thread ID from `[]`"""

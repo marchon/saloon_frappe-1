@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 // add a new dom element
@@ -24,10 +24,20 @@ frappe.dom = {
 		// execute the script globally
 		document.getElementsByTagName('head')[0].appendChild(el);
 	},
-	set_style: function(txt) {
+	set_style: function(txt, id) {
 		if(!txt) return;
+
 		var se = document.createElement('style');
 		se.type = "text/css";
+
+		if (id) {
+			var element = document.getElementById(id);
+			if (element) {
+				element.parentNode.removeChild(element);
+			}
+			se.id = id;
+		}
+
 		if (se.styleSheet) {
 			se.styleSheet.cssText = txt;
 		} else {
@@ -59,10 +69,10 @@ frappe.dom = {
 		};
 		return ele;
 	},
-	freeze: function() {
+	freeze: function(msg, css_class) {
 		// blur
 		if(!$('#freeze').length) {
-			$("<div id='freeze' class='modal-backdrop'>")
+			var freeze = $('<div id="freeze" class="modal-backdrop fade"></div>')
 				.on("click", function() {
 					if (cur_frm && cur_frm.cur_grid) {
 						cur_frm.cur_grid.toggle_view();
@@ -70,15 +80,30 @@ frappe.dom = {
 					}
 				})
 				.appendTo("#body_div");
+
+			freeze.html(repl('<div class="freeze-message-container"><div class="freeze-message"><p class="lead">%(msg)s</p></div></div>',
+				{msg: msg || ""}));
+
+			setTimeout(function() { freeze.addClass("in") }, 1);
+
+		} else {
+			$("#freeze").addClass("in");
 		}
-		$('#freeze').toggle(true);
+
+		if (css_class) {
+			$("#freeze").addClass(css_class);
+		}
+
 		frappe.dom.freeze_count++;
 	},
 	unfreeze: function() {
-		if(!frappe.dom.freeze_count)return; // anything open?
+		if(!frappe.dom.freeze_count) return; // anything open?
 		frappe.dom.freeze_count--;
 		if(!frappe.dom.freeze_count) {
-			$('#freeze').toggle(false);
+			var freeze = $('#freeze').removeClass("in");
+			setTimeout(function() {
+				if(!frappe.dom.freeze_count) { freeze.remove(); }
+			}, 150);
 		}
 	},
 	save_selection: function() {
@@ -109,30 +134,15 @@ frappe.dom = {
 				savedSel.select();
 			}
 		}
+	},
+	is_touchscreen: function() {
+		return ('ontouchstart' in window)
 	}
 }
 
 frappe.get_modal = function(title, content) {
 	return $(frappe.render_template("modal", {title:title, content:content})).appendTo(document.body);
 };
-
-var pending_req = 0
-frappe.set_loading = function() {
-	pending_req++;
-	$('body').css('cursor', 'progress').attr("data-ajax-state", "running");
-	NProgress.start();
-	$("body");
-}
-
-frappe.done_loading = function() {
-	pending_req--;
-	if(!pending_req){
-		$('body').css('cursor', 'default').attr("data-ajax-state", "complete");
-		NProgress.done();
-	} else {
-		NProgress.inc();
-	}
-}
 
 var get_hex = function(i) {
 	i = Math.round(i);

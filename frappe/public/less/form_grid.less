@@ -1,8 +1,8 @@
 @import "variables.less";
+@import "mixins.less";
 
 .form-grid {
 	border: 1px solid @border-color;
-	margin-bottom: 15px;
 	border-radius: 3px;
 }
 
@@ -13,10 +13,8 @@
 }
 
 .grid-row {
-	padding: 10px 15px;
 	border-bottom: 1px solid @border-color;
-	transition: 0.2s;
-	-webkit-transition: 0.2s;
+	.transition(.2s);
 }
 
 .grid-row:last-child {
@@ -35,13 +33,12 @@
 	background-color: #fff;
 }
 
-.grid-body .data-row {
-	font-size: 12px;
+.form-grid .data-row {
+	padding: 10px 15px;
 }
 
-.grid-footer {
-	padding: 10px 15px;
-	border-top: 1px solid @border-color;
+.grid-body .data-row {
+	font-size: 12px;
 }
 
 .grid-empty, .list-loading {
@@ -65,25 +62,55 @@
 	margin-left: 15px;
 }
 
-.grid-row td {
-	vertical-align: top;
-}
+.grid-row {
+	td {
+		vertical-align: top;
+	}
 
-.grid-row p {
-	margin-bottom: 5px;
+	p {
+		margin-bottom: 5px;
+	}
+
+	.col-sm-6 {
+		.editor-toolbar-text-group,
+		.editor-toolbar-align-group {
+			display: none;
+		}
+
+		.text-editor {
+			height: 200px;
+		}
+
+		.markdown-text-editor {
+			height: 251px;
+		}
+	}
 }
 
 .form-in-grid {
-	margin: -10px -15px;
+	background-color: white;
 	z-index: 1021;
 	position: relative;
-	background-color: white;
+	overflow: hidden;
+	height: 0;
+	opacity: 0;
+	.transition(opacity .2s ease)
+}
+
+.grid-row-open .form-in-grid {
+	opacity: 1;
+	height: auto;
+	overflow: visible;
 }
 
 .grid-form-heading {
 	padding: 10px 15px;
 	font-size: 120%;
 	border-bottom: 1px solid @border-color;
+}
+
+.grid-footer {
+	background-color: #fff;
 }
 
 .grid-footer-toolbar {
@@ -102,5 +129,9 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	padding-right: 0px;
+}
+
+.grid-label {
+	margin-right: 8px; margin-bottom: 4px;
 }
 

@@ -1,10 +1,11 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
 import frappe
 from frappe.model.document import Document
 from frappe.build import html_to_js_template
+from frappe import conf, _
 
 class Page(Document):
 	def autoname(self):
@@ -26,13 +27,16 @@ class Page(Document):
 					cnt = 1
 				self.name += '-' + str(cnt)
 
+	def validate(self):
+		if not getattr(conf,'developer_mode', 0):
+			frappe.throw(_("Not in Developer Mode"))
+
 	# export
 	def on_update(self):
 		"""
 			Writes the .txt for this page and if write_content is checked,
 			it will write out a .html file
 		"""
-		from frappe import conf
 		from frappe.core.doctype.doctype.doctype import make_module_and_roles
 		make_module_and_roles(self, "roles")
 
@@ -48,8 +52,8 @@ class Page(Document):
 			# js
 			if not os.path.exists(path + '.js'):
 				with open(path + '.js', 'w') as f:
-					f.write("""frappe.pages['%s'].onload = function(wrapper) {
-	frappe.ui.make_app_page({
+					f.write("""frappe.pages['%s'].on_page_load = function(wrapper) {
+	var page = frappe.ui.make_app_page({
 		parent: wrapper,
 		title: '%s',
 		single_column: true
@@ -62,20 +66,37 @@ class Page(Document):
 			d[key] = self.get(key)
 		return d
 
+	def is_permitted(self):
+		"""Returns true if Page Role is not set or the user is allowed."""
+		from frappe.utils import has_common
+
+		allowed = [d.role for d in frappe.get_all("Page Role", fields=["role"],
+			filters={"parent": self.name})]
+
+		if not allowed:
+			return True
+
+		roles = frappe.get_roles()
+
+		if has_common(roles, allowed):
+			return True
+
 	def load_assets(self):
 		from frappe.modules import get_module_path, scrub
 		import os
 
-		path = os.path.join(get_module_path(self.module), 'page', scrub(self.name))
+		page_name = scrub(self.name)
+
+		path = os.path.join(get_module_path(self.module), 'page', page_name)
 
 		# script
-		fpath = os.path.join(path, scrub(self.name) + '.js')
+		fpath = os.path.join(path, page_name + '.js')
 		if os.path.exists(fpath):
 			with open(fpath, 'r') as f:
 				self.script = unicode(f.read(), "utf-8")
 
 		# css
-		fpath = os.path.join(path, scrub(self.name) + '.css')
+		fpath = os.path.join(path, page_name + '.css')
 		if os.path.exists(fpath):
 			with open(fpath, 'r') as f:
 				self.style = unicode(f.read(), "utf-8")
@@ -85,8 +106,22 @@ class Page(Document):
 			if fname.endswith(".html"):
 				with open(os.path.join(path, fname), 'r') as f:
 					template = unicode(f.read(), "utf-8")
+					if "<!-- jinja -->" in template:
+						context = {}
+						try:
+							context = frappe.get_attr("{app}.{module}.page.{page}.{page}.get_context".format(
+								app = frappe.local.module_app[scrub(self.module)],
+								module = scrub(self.module),
+								page = page_name
+							))(context)
+						except (AttributeError, ImportError):
+							pass
+
+						template = frappe.render_template(template, context)
 					self.script = html_to_js_template(fname, template) + self.script
 
 		if frappe.lang != 'en':
 			from frappe.translate import get_lang_js
 			self.script += get_lang_js("page", self.name)
+
+

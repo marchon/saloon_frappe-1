@@ -4,10 +4,17 @@
 	padding: 15px;
 }
 
+.result-list {
+	min-height: 200px;
+}
+
 .show_filters {
-	padding: 15px;
-	padding-bottom: 5px;
+	padding: 15px 15px 0px;
 	border-bottom: 1px solid @border-color;
+}
+
+.set-filters {
+	padding-bottom: 4px;
 }
 
 .set-filters .btn {
@@ -24,12 +31,47 @@
 	color: @text-muted;
 }
 
+.filter-box {
+	border-top: 1px solid @border-color;
+	margin: 0px -15px;
+	padding: 10px 15px 3px;
+
+	.remove-filter {
+		margin-top: 6px;
+		margin-left: 15px;
+	}
+
+	.filter_field {
+		padding-right: 15px;
+		width: calc(100% - 36px);
+	}
+}
+
+.ui-autocomplete .filter-field-select {
+	cursor: pointer;
+
+	p {
+		margin: 5px;
+	}
+}
+
+// for sm and above
+@media (min-width: 768px) {
+	.filter-box .row > div[class*="col-sm-"] {
+		padding-right: 0px;
+	}
+
+	.filter_field {
+		width: 65% !important;
+	}
+}
+
 .list-row {
 	padding: 9px 15px;
 	border-bottom: 1px solid @border-color;
 	cursor: pointer;
-	transition: 0.2s;
-	-webkit-transition: 0.2s;
+	transition: color 0.2s;
+	-webkit-transition: color 0.2s;
 }
 
 .list-row .h6 {
@@ -92,10 +134,6 @@
 	margin-top: 12px;
 }
 
-.stat-label {
-	margin-bottom: 5px;
-}
-
 .filterable {
 	cursor: pointer;
 }
@@ -110,6 +148,11 @@
 }
 
 .list-row-right .modified {
+	margin-top: 3px;
+}
+
+.list-row-right .list-row-modified {
+	margin-right: 9px;
 	margin-top: 3px;
 }
 
@@ -129,6 +172,14 @@
 	padding: 5px 15px;
 }
 
+.listview-main-section .icon-star {
+	cursor: pointer;
+}
+
+.list-row-head .icon-star {
+	vertical-align: middle;
+}
+
 .star-action.icon-star {
 	color: #ffdb4c;
 }
@@ -138,9 +189,23 @@
 }
 
 .list-col {
-	height: 18px;
+	height: 20px;
 }
 
 .list-value {
 	vertical-align: middle;
+}
+
+@media(max-width: 767px) {
+	.doclist-row {
+		font-size: @text-regular;
+	}
+
+	.doclist-row [type='checkbox'] {
+		display: none;
+	}
+
+	.doclist-row .list-row-right .list-row-modified {
+		display: none;
+	}
 }

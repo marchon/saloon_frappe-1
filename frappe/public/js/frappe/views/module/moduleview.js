@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.provide("frappe.views.moduleview");
@@ -9,58 +9,22 @@ frappe.views.ModuleFactory = frappe.views.Factory.extend({
 		var module = route[1];
 		frappe.views.moduleview[module] = parent;
 		new frappe.views.moduleview.ModuleView(module);
+		this.on_show();
 	},
+	on_show: function() {
+		frappe.breadcrumbs.last_module = frappe.get_route()[1];
+	}
 });
-
-frappe.views.show_open_count_list = function(element) {
-	var doctype = $(element).attr("data-doctype");
-	var condition = frappe.boot.notification_info.conditions[doctype];
-	if(condition) {
-		frappe.route_options = condition;
-		var route = frappe.get_route()
-		if(route[0]==="List" && route[1]===doctype) {
-			frappe.pages["List/" + doctype].doclistview.refresh();
-		} else {
-			frappe.set_route("List", doctype);
-		}
-	}
-}
-
-frappe.get_module = function(m) {
-	var module = frappe.modules[m];
-	if (!module) {
-		return;
-	}
-
-	module.name = m;
-
-	if(module.type==="module" && !module.link) {
-		module.link = "Module/" + m;
-	}
-
-	if(module.link) {
-		module._id = module.link.toLowerCase().replace("/", "-");
-	}
-
-	if(!module.label) {
-		module.label = m;
-	}
-
-	if(!module._label) {
-		module._label = __(module.label || module.name);
-	}
-
-	return module;
-}
-
 
 frappe.views.moduleview.ModuleView = Class.extend({
 	init: function(module) {
 		this.module = module;
-		this.module_info = frappe.get_module(module);
+		this.module_info = frappe.get_module(module) || {};
+		this.module_label = __(this.module_info.label || this.module);
 		this.sections = {};
 		this.current_section = null;
 		this.make();
+		$(".navbar-center").html(this.module_label);
 	},
 
 	make: function() {
@@ -76,10 +40,9 @@ frappe.views.moduleview.ModuleView = Class.extend({
 				frappe.views.moduleview[me.module] = me.parent;
 				me.page = me.parent.page;
 				me.parent.moduleview = me;
-				me.page.set_title(__(frappe.modules[me.module]
-					&& frappe.modules[me.module].label || me.module));
 				me.render();
-			}
+			},
+			freeze: true,
 		});
 	},
 
@@ -95,22 +58,18 @@ frappe.views.moduleview.ModuleView = Class.extend({
 		this.activate(this.data.data[0].label);
 	},
 
-	make_title: function(name) {
-		this.page_title = this.page.wrapper.find(".page-title").addClass("hidden-xs");
-		this.page.wrapper.find(".mobile-title, .mobile-module-icon").remove();
-
-		$(frappe.render_template("module_title", {
-			title: this.page_title.find("h1").html(),
-			section_name: name,
-			data: this.data
-		})).insertAfter(this.page_title);
-	},
-
 	make_sidebar: function(name) {
 		var me = this;
-		$(frappe.render_template("module_sidebar", {data:this.data})).appendTo(this.page.sidebar);
+		var sidebar_content = frappe.render_template("module_sidebar", {data:this.data});
+		var module_sidebar = $(sidebar_content)
+			.addClass("nav nav-pills nav-stacked")
+			.appendTo(this.page.sidebar.addClass("hidden-xs hidden-sm"));
+		var offcanvas_module_sidebar = $(sidebar_content)
+			.addClass("list-unstyled sidebar-menu")
+			.appendTo($(".sidebar-left .module-sidebar").empty());
 
-		this.page.wrapper.on("click", ".module-link", function() {
+		this.sidebar = offcanvas_module_sidebar.add(module_sidebar);
+		this.sidebar.on("click", ".module-link", function() {
 			me.activate($(this).parent().attr("data-label"));
 		});
 	},
@@ -126,20 +85,37 @@ frappe.views.moduleview.ModuleView = Class.extend({
 				.appendTo(this.page.main);
 
 			$(this.sections[name]).find(".module-item").each(function(i, mi) {
-				$(mi).on("click", function() {
-					frappe.set_route(me.get_route(data.items[$(mi).attr("data-item-index")]));
-				});
+				var item = data.items[$(mi).attr("data-item-index")];
+				$(mi)
+					.attr("data-route", me.get_route(item).join("/"))
+					.attr("data-label", item.name)
+					.on("click", function(event) {
+						// if clicked on open notification!
+						if (event.target.classList.contains("open-notification")) {
+							var doctype = event.target.getAttribute("data-doctype");
+							frappe.route_options = frappe.boot.notification_info.conditions[doctype];
+						}
+						if(item.type==="help") {
+							frappe.help.show_video(item.youtube_id);
+							return false;
+						} else {
+							frappe.set_route(me.get_route(item));
+						}
+					});
 			});
 		}
+
+		// set title
+		this.page.set_title(repl('<span class="hidden-xs hidden-sm">%(module)s</span>\
+			<span class="hidden-md hidden-lg">%(section)s</span>',
+			{module: this.module_label, section: name}));
+
 		this.current_section = this.sections[name];
 		this.current_section.removeClass("hide");
 
 		// active
-		this.page.sidebar.find("li.active").removeClass("active");
-		this.page.sidebar.find('[data-label="'+ name +'"]').addClass("active");
-
-		// make mobile title
-		this.make_title(name);
+		this.sidebar.find("li.active").removeClass("active");
+		this.sidebar.find('[data-label="'+ name +'"]').addClass("active");
 
 		frappe.app.update_notification_count_in_modules();
 	},
@@ -148,6 +124,8 @@ frappe.views.moduleview.ModuleView = Class.extend({
         var route = [item.route || item.link];
         if (!route[0]) {
             if (item.type == "doctype") {
+				// save the last page from the breadcrumb was accessed
+				frappe.breadcrumbs.set_doctype_module(item.name, this.module);
                 route = ["List", item.name];
             } else if (item.type == "page") {
                 route = [item.name]

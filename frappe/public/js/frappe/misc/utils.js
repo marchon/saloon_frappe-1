@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.provide('frappe.utils');
@@ -15,6 +15,8 @@ frappe.utils = {
 		}
 	},
 	is_html: function(txt) {
+		if (!txt) return false;
+
 		if(txt.indexOf("<br>")==-1 && txt.indexOf("<p")==-1
 			&& txt.indexOf("<img")==-1 && txt.indexOf("<div")==-1) {
 			return false;
@@ -41,13 +43,34 @@ frappe.utils = {
 		});
 		return out.join(newline);
 	},
+	escape_html: function(txt) {
+		return $("<div></div>").text(txt || "").html();
+	},
 	is_url: function(txt) {
 		return txt.toLowerCase().substr(0,7)=='http://'
 			|| txt.toLowerCase().substr(0,8)=='https://'
 	},
 	remove_script_and_style: function(txt) {
-		return (!txt || (txt.indexOf("<script>")===-1 && txt.indexOf("<style>")===-1)) ? txt :
-			$("<div></div>").html(txt).find("script,noscript,style,title,meta").remove().end().html();
+		var div = document.createElement('div');
+		div.innerHTML = txt;
+		["script", "style", "noscript", "title", "meta", "base", "head"].forEach(function(e, i) {
+			var elements = div.getElementsByTagName(e);
+			var i = elements.length;
+			while (i--) {
+				elements[i].parentNode.removeChild(elements[i]);
+			}
+		});
+		return div.innerHTML;
+	},
+	toggle_blockquote: function(txt) {
+		if (!txt) return txt;
+
+		var content = $("<div></div>").html(txt)
+		content.find("blockquote").parent("blockquote").addClass("hidden")
+			.before('<p><a class="text-muted btn btn-default toggle-blockquote" style="padding: 2px 7px 0px; line-height: 1;"> \
+					• • • \
+				</a></p>');
+		return content.html();
 	},
 	filter_dict: function(dict, filters) {
 		var ret = [];
@@ -101,17 +124,18 @@ frappe.utils = {
 	},
 	set_intro: function(me, wrapper, txt, append, indicator) {
 		if(!me.intro_area) {
-			me.intro_area = $('<div class="form-intro-area">')
+			me.intro_area = $('<div class="intro-area">')
 				.prependTo(wrapper);
-		}
-		if(!indicator) {
-			indicator = "grey";
 		}
 		if(txt) {
 			if(!append) {
 				me.intro_area.empty();
 			}
-			me.intro_area.html('<div class="indicator '+indicator+'">'+txt+'</div>')
+			if(indicator) {
+				me.intro_area.html('<div class="indicator '+indicator+'">'+txt+'</div>')
+			} else {
+				me.intro_area.html('<p class="text-muted">'+txt+'</div>')
+			}
 		} else {
 			me.intro_area.remove();
 			me.intro_area = null;
@@ -119,8 +143,7 @@ frappe.utils = {
 	},
 	set_footnote: function(me, wrapper, txt) {
 		if(!me.footnote_area) {
-			$("<hr>").appendTo(wrapper).css({"margin-bottom": "0px"});
-			me.footnote_area = $('<div class="text-muted form-intro-area small">')
+			me.footnote_area = $('<div class="text-muted footnote-area">')
 				.appendTo(wrapper);
 		}
 
@@ -131,6 +154,7 @@ frappe.utils = {
 			me.footnote_area.remove();
 			me.footnote_area = null;
 		}
+		return me.footnote_area;
 	},
 	get_args_dict_from_url: function(txt) {
 		var args = {};
@@ -227,6 +251,7 @@ frappe.utils = {
 
 		return list;
 	},
+
 	unique: function(list) {
 		var dict = {},
 			arr = [];
@@ -237,6 +262,25 @@ frappe.utils = {
 			}
 		}
 		return arr;
+	},
+
+	remove_nulls: function(list) {
+		var new_list = [];
+		for (var i=0, l=list.length; i < l; i++) {
+			if (!is_null(list[i])) {
+				new_list.push(list[i]);
+			}
+		}
+		return new_list;
+	},
+
+	all: function(lst) {
+		for(var i=0, l=lst.length; i<l; i++) {
+			if(!lst[i]) {
+				return false;
+			}
+		}
+		return true;
 	},
 
 	dict: function(keys,values) {
@@ -321,4 +365,133 @@ frappe.utils = {
 			setTimeout(function() { callback(dataURL); }, 10 );
 		}
 	},
+
+    csv_to_array: function (strData, strDelimiter) {
+        // Check to see if the delimiter is defined. If not,
+        // then default to comma.
+        strDelimiter = (strDelimiter || ",");
+
+        // Create a regular expression to parse the CSV values.
+        var objPattern = new RegExp(
+            (
+                // Delimiters.
+                "(\\" + strDelimiter + "|\\r?\\n|\\r|^)" +
+
+                // Quoted fields.
+                "(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|" +
+
+                // Standard fields.
+                "([^\"\\" + strDelimiter + "\\r\\n]*))"
+            ),
+            "gi"
+            );
+
+
+        // Create an array to hold our data. Give the array
+        // a default empty first row.
+        var arrData = [[]];
+
+        // Create an array to hold our individual pattern
+        // matching groups.
+        var arrMatches = null;
+
+
+        // Keep looping over the regular expression matches
+        // until we can no longer find a match.
+        while (arrMatches = objPattern.exec( strData )){
+
+            // Get the delimiter that was found.
+            var strMatchedDelimiter = arrMatches[ 1 ];
+
+            // Check to see if the given delimiter has a length
+            // (is not the start of string) and if it matches
+            // field delimiter. If id does not, then we know
+            // that this delimiter is a row delimiter.
+            if (
+                strMatchedDelimiter.length &&
+                strMatchedDelimiter !== strDelimiter
+                ){
+
+                // Since we have reached a new row of data,
+                // add an empty row to our data array.
+                arrData.push( [] );
+
+            }
+
+            var strMatchedValue;
+
+            // Now that we have our delimiter out of the way,
+            // let's check to see which kind of value we
+            // captured (quoted or unquoted).
+            if (arrMatches[ 2 ]){
+
+                // We found a quoted value. When we capture
+                // this value, unescape any double quotes.
+                strMatchedValue = arrMatches[ 2 ].replace(
+                    new RegExp( "\"\"", "g" ),
+                    "\""
+                    );
+
+            } else {
+
+                // We found a non-quoted value.
+                strMatchedValue = arrMatches[ 3 ];
+
+            }
+
+
+            // Now that we have our value string, let's add
+            // it to the data array.
+            arrData[ arrData.length - 1 ].push( strMatchedValue );
+        }
+
+        // Return the parsed data.
+        return( arrData );
+    },
+
+	warn_page_name_change: function(frm) {
+		frappe.msgprint("Note: Changing the Page Name will break previous URL to this page.");
+	},
+
+	if_notify_permitted: function(callback) {
+		if (Notify.needsPermission) {
+			Notify.requestPermission(callback);
+		} else {
+			callback && callback();
+		}
+	},
+
+	notify: function(subject, body, route, onclick) {
+		if(!route) route = "messages";
+		if(!onclick) onclick = function() {
+			frappe.set_route(route);
+		}
+
+		frappe.utils.if_notify_permitted(function() {
+			var notify = new Notify(subject, {
+			    body: body.replace(/<[^>]*>/g, ""),
+			    notifyClick: onclick
+			});
+			notify.show();
+		});
+	},
+
+	set_title: function(title) {
+		frappe._original_title = title;
+		if(frappe._title_prefix) {
+			title = frappe._title_prefix + " " + title.replace(/<[^>]*>/g, "");
+		}
+		document.title = title;
+	},
+
+	set_title_prefix: function(prefix) {
+		frappe._title_prefix = prefix;
+
+		// reset the original title
+		frappe.utils.set_title(frappe._original_title);
+	},
+
+	is_image_file: function(filename) {
+		return (/\.(gif|jpg|jpeg|tiff|png|svg)$/i).test(filename);
+	}
 };

@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 // for license information please see license.txt
@@ -29,7 +29,7 @@ frappe.form.formatters = {
 
 		} else {
 			// show 1.000000 as 1
-			if (!is_null(value)) {
+			if (!(options || {}).always_show_decimals && !is_null(value)) {
 				var temp = cstr(value).split(".");
 				if (temp[1]==undefined || cint(temp[1])===0) {
 					precision = 0;
@@ -54,19 +54,28 @@ frappe.form.formatters = {
 			? "" : format_currency(value, currency, docfield.precision || null), options);
 	},
 	Check: function(value) {
-		return value ? "<i class='icon-check'></i>" : "<i class='icon-check-empty'></i>";
+		if(value) {
+			return '<i class="octicon octicon-check" style="margin-right: 8px;"></i>';
+		} else {
+			return '<i class="icon-check-empty text-extra-muted" style="margin-right: 8px;"></i>';
+		}
 	},
 	Link: function(value, docfield, options) {
 		var doctype = docfield._options || docfield.options;
-		if(options && options.for_print)
+		if(value && value.match(/^['"].*['"]$/)) {
+			return value.replace(/^.(.*).$/, "$1");
+		}
+		if(options && options.for_print) {
 			return value;
-		if(!value)
+		}
+		if(!value) {
 			return "";
+		}
 		if(docfield && docfield.link_onclick) {
 			return repl('<a onclick="%(onclick)s">%(value)s</a>',
 				{onclick: docfield.link_onclick.replace(/"/g, '&quot;'), value:value});
 		} else if(docfield && doctype) {
-			return repl('<a class="grey" href="#Form/%(doctype)s/%(name)s">%(label)s</a>', {
+			return repl('<a class="grey" href="#Form/%(doctype)s/%(name)s" data-doctype="%(doctype)s">%(label)s</a>', {
 				doctype: encodeURIComponent(doctype),
 				name: encodeURIComponent(value),
 				label: __(options && options.label || value)
@@ -78,9 +87,12 @@ frappe.form.formatters = {
 	Date: function(value) {
 		return value ? dateutil.str_to_user(value) : "";
 	},
+	Datetime: function(value) {
+		return value ? dateutil.str_to_user(dateutil.convert_to_user_tz(value)) : "";
+	},
 	Text: function(value) {
 		if(value) {
-			var tags = ["<p", "<div", "<br"];
+			var tags = ["<p", "<div", "<br", "<table"];
 			var match = false;
 
 			for(var i=0; i<tags.length; i++) {
@@ -91,7 +103,7 @@ frappe.form.formatters = {
 			}
 
 			if(!match) {
-				return replace_newlines(value);
+				value = replace_newlines(value);
 			}
 		}
 
@@ -101,7 +113,7 @@ frappe.form.formatters = {
 		var html = "";
 		$.each(JSON.parse(value || "[]"), function(i, v) {
 			if(v) html+= '<span class="avatar avatar-small" \
-				style="margin-right: 3px;"><img src="'+frappe.user_info(v).image+'"></span>';
+				style="margin-right: 3px;"><img src="'+frappe.user_info(v).image+'" alt="'+ frappe.user_info(v).abbr +'"></span>';
 		});
 		return html;
 	},
@@ -136,7 +148,7 @@ frappe.form.formatters = {
 		return frappe.form.formatters.Text(value);
 	},
 	TextEditor: function(value) {
-		return frappe.form.formatters.Text(frappe.utils.remove_script_and_style(value));
+		return frappe.form.formatters.Text(value);
 	},
 	Code: function(value) {
 		return "<pre>" + (value==null ? "" : $("<div>").text(value).html()) + "</pre>"
@@ -155,6 +167,9 @@ frappe.form.formatters = {
 		} else {
 			return "<span class='label'>" + value + "</span>";
 		}
+	},
+	Email: function(value) {
+		return $("<div></div>").text(value).html();
 	}
 }
 
@@ -176,7 +191,12 @@ frappe.format = function(value, df, options, doc) {
 
 	formatter = df.formatter || frappe.form.get_formatter(fieldtype);
 
-	return formatter(value, df, options, doc);
+	var formatted = formatter(value, df, options, doc);
+
+	if (typeof formatted == "string")
+		formatted = frappe.utils.remove_script_and_style(formatted);
+
+	return formatted;
 }
 
 frappe.get_format_helper = function(doc) {

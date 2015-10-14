@@ -1,85 +1,105 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.provide("frappe.customize_form");
 
-frappe.ui.form.on("Customize Form", "onload", function(frm) {
-	frappe.customize_form.add_fields_help(frm);
+frappe.ui.form.on("Customize Form", {
+	onload: function(frm) {
+		frappe.customize_form.add_fields_help(frm);
 
-	frm.set_query("doc_type", function() {
-		return {
-			filters: [
-				['DocType', 'issingle', '=', 0],
-				['DocType', 'custom', '=', 0],
-				['DocType', 'in_create', '=', 0],
-				['DocType', 'name', 'not in', 'DocType, DocField, DocPerm, User, Role, UserRole, \
-					 Page, Page Role, Module Def, Print Format, Report, Customize Form, \
-					 Customize Form Field']
-			]
-		};
-	});
+		frm.set_query("doc_type", function() {
+			return {
+				filters: [
+					['DocType', 'issingle', '=', 0],
+					['DocType', 'custom', '=', 0],
+					['DocType', 'in_create', '=', 0],
+					['DocType', 'name', 'not in', 'DocType, DocField, DocPerm, User, Role, UserRole, \
+						 Page, Page Role, Module Def, Print Format, Report, Customize Form, \
+						 Customize Form Field']
+				]
+			};
+		});
 
-	$(frm.wrapper).on("grid-row-render", function(e, grid_row) {
-		if(grid_row.doc && grid_row.doc.fieldtype=="Section Break") {
-			$(grid_row.row).css({"font-weight": "bold"});
+		$(frm.wrapper).on("grid-row-render", function(e, grid_row) {
+			if(grid_row.doc && grid_row.doc.fieldtype=="Section Break") {
+				$(grid_row.row).css({"font-weight": "bold"});
+			}
+		});
+	},
+
+	doc_type: function(frm) {
+		if(frm.doc.doc_type) {
+			return frm.call({
+				method: "fetch_to_customize",
+				doc: frm.doc,
+				callback: function(r) {
+					frm.refresh();
+				}
+			});
+		}
+	},
+
+	refresh: function(frm) {
+		frm.disable_save();
+		frm.page.clear_icons();
+
+		if(frm.doc.doc_type) {
+			frappe.customize_form.set_primary_action(frm);
+
+			frm.add_custom_button(__('Refresh Form'), function() {
+				frm.script_manager.trigger("doc_type");
+			}, "icon-refresh", "btn-default");
+
+			frm.add_custom_button(__('Reset to defaults'), function() {
+				frappe.customize_form.confirm(__('Remove all customizations?'), frm);
+			}, "icon-eraser", "btn-default");
+		}
+
+		// sort order select
+		if(frm.doc.doc_type) {
+			var fields = $.map(frm.doc.fields,
+					function(df) { return frappe.model.is_value_type(df.fieldtype) ? df.fieldname : null; });
+			fields = ["", "name", "modified"].concat(fields);
+			frm.set_df_property("sort_field", "options", fields);
+		}
+
+		if(frappe.route_options) {
+			setTimeout(function() {
+				frm.set_value("doc_type", frappe.route_options.doctype);
+				frappe.route_options = null;
+			}, 1000);
+		}
+
+	},
+
+});
+
+frappe.ui.form.on("Customize Form Field", {
+	before_fields_remove: function(frm, doctype, name) {
+		var row = frappe.get_doc(doctype, name);
+		if(!(row.is_custom_field || row.__islocal)) {
+			msgprint(__("Cannot delete standard field. You can hide it if you want"));
+			throw "cannot delete custom field";
+		}
+	}
+});
+
+frappe.customize_form.set_primary_action = function(frm) {
+	frm.page.set_primary_action(__("Update"), function() {
+		if(frm.doc.doc_type) {
+			return frm.call({
+				doc: frm.doc,
+				freeze: true,
+				method: "save_customization",
+				callback: function(r) {
+					if(!r.exc) {
+						frappe.customize_form.clear_locals_and_refresh(frm);
+					}
+				}
+			});
 		}
 	});
-});
-
-frappe.ui.form.on("Customize Form", "doc_type", function(frm) {
-	if(frm.doc.doc_type) {
-		return frm.call({
-			method: "fetch_to_customize",
-			doc: frm.doc,
-			callback: function(r) {
-				frm.refresh();
-			}
-		});
-	}
-});
-
-frappe.ui.form.on("Customize Form", "refresh", function(frm) {
-	frm.disable_save();
-	frm.frm_head.page.iconbar.clear("1");
-
-	if(frm.doc.doc_type) {
-		frm.page.set_primary_action(__("Update"), function() {
-			if(frm.doc.doc_type) {
-				return frm.call({
-					doc: frm.doc,
-					method: "save_customization",
-					callback: function(r) {
-						if(!r.exc) {
-							frappe.customize_form.clear_locals_and_refresh(frm);
-						}
-					}
-				});
-			}
-		});
-
-		frm.add_custom_button(__('Refresh Form'), function() {
-			frm.script_manager.trigger("doc_type");
-		}, "icon-refresh", "btn-default");
-
-		frm.add_custom_button(__('Reset to defaults'), function() {
-			frappe.customize_form.confirm(__('Remove all customizations?'), frm);
-		}, "icon-eraser", "btn-default");
-	}
-
-	// if(!frm.doc.doc_type) {
-	// 	var frm_head = frm.frm_head.page;
-	// 	$(frm_head.buttons['Update']).prop('disabled', true);
-	// 	$(frm_head.buttons['Refresh Form']).prop('disabled', true);
-	// 	$(frm_head.buttons['Reset to defaults']).prop('disabled', true);
-	// }
-
-	if(frappe.route_options) {
-		setTimeout(function() {
-			frm.set_value("doc_type", frappe.route_options.doctype);
-			frappe.route_options = null;
-		}, 1000);
-	}
-});
+};
 
 frappe.customize_form.confirm = function(msg, frm) {
 	if(!frm.doc.doc_type) return;

@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 # For license information, please see license.txt
@@ -9,4 +9,11 @@ import frappe
 from frappe.model.document import Document
 
 class SchedulerLog(Document):
-	pass
+	def onload(self):
+		if not self.seen:
+			self.seen = 1
+			self.save()
+
+def set_old_logs_as_seen():
+	frappe.db.sql("""update `tabScheduler Log` set seen=1
+		where ifnull(seen, 0)=0 and datediff(curdate(), creation) > 7""")

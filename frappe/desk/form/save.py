@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -23,6 +23,7 @@ def savedocs():
 
 		# update recent documents
 		run_onload(doc)
+		frappe.get_user().update_recent(doc.doctype, doc.name)
 		send_updated_docs(doc)
 
 	except Exception:
@@ -31,10 +32,12 @@ def savedocs():
 		raise
 
 @frappe.whitelist()
-def cancel(doctype=None, name=None):
+def cancel(doctype=None, name=None, workflow_state_fieldname=None, workflow_state=None):
 	"""cancel a doclist"""
 	try:
 		doc = frappe.get_doc(doctype, name)
+		if workflow_state_fieldname and workflow_state:
+			doc.set(workflow_state_fieldname, workflow_state)
 		doc.cancel()
 		send_updated_docs(doc)
 

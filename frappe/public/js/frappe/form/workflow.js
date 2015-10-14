@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.ui.form.States = Class.extend({
@@ -67,6 +67,11 @@ frappe.ui.form.States = Class.extend({
 
 		this.frm.page.clear_actions_menu();
 
+		// if the loaded doc is dirty, don't show workflow buttons
+		if (this.frm.doc.__unsaved===1) {
+			return;
+		}
+
 		$.each(frappe.workflow.get_transitions(this.frm.doctype, state), function(i, d) {
 			if(in_list(user_roles, d.allowed)) {
 				added = true;
@@ -82,8 +87,6 @@ frappe.ui.form.States = Class.extend({
 					var new_state = frappe.workflow.get_document_state(me.frm.doctype, next_state);
 					var new_docstatus = cint(new_state.doc_status);
 
-					// update field and value
-					console.log(new_state);
 
 					if(new_state.update_field) {
 						me.frm.set_value(new_state.update_field, new_state.update_value);
@@ -130,7 +133,7 @@ frappe.ui.form.States = Class.extend({
 	},
 
 	set_default_state: function() {
-		var default_state = frappe.workflow.get_default_state(this.frm.doctype);
+		var default_state = frappe.workflow.get_default_state(this.frm.doctype, this.frm.doc.docstatus);
 		if(default_state) {
 			this.frm.set_value(this.state_fieldname, default_state);
 		}

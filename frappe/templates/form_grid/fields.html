@@ -5,9 +5,9 @@
 		"Column Break": "f5f7fa"
 	}[doc.fieldtype] || "fff" %}; padding: 10px; margin: -10px -15px;">
 		<div class="col-sm-4">
-			<p>
 			{% if (doc.fieldtype==="Section Break") { %}<strong>{% } %}
 				{% if (doc.reqd) { %}<span class="text-danger">{% } %}
+				{% if (doc.bold) { %}<b>{% } %}
 				{% if (doc.hidden) { %}
 					<span class="text-muted"><i class="icon-eye-close"></i>{% } %}
 					{% if(doc.fieldtype==="Link") { %}<i class="icon-link"></i>{% } %}
@@ -16,8 +16,8 @@
 					{%= doc.label %}
 				{% if (doc.hidden) { %}</span>{% } %}
 				{% if (doc.reqd) { %}</span>{% } %}
+				{% if (doc.bold) { %}</b>{% } %}
 			{% if (doc.fieldtype=="Section Break") { %}</strong>{% } %}
-			</p>
 			{% if (doc.description) { %}<p class="text-muted small">{%= doc.description %}</p>{% } %}
 		</div>
 		<div class="col-sm-3">

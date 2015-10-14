@@ -1,26 +1,27 @@
 <div class="navbar navbar-default navbar-fixed-top" role="navigation">
 	<div class="container">
 		<div class="navbar-header">
-			<a class="navbar-brand toggle-sidebar visible-xs">
+			<a class="navbar-brand toggle-sidebar visible-xs visible-sm">
 				<i class="octicon octicon-three-bars"></i>
 			</a>
-			<a class="navbar-brand navbar-home hidden-xs" href="#">Home</a>
-			<ul class="nav navbar-nav text-ellipsis" id="navbar-breadcrumbs">
+			<a class="navbar-brand navbar-home hidden-xs hidden-sm" href="#">Home</a>
+			<ul class="nav navbar-nav" id="navbar-breadcrumbs">
 			</ul>
 		</div>
-		<ul class="nav navbar-nav navbar-right visible-xs">
+		<div class="navbar-center text-ellipsis" style="display: none;"></div>
+		<ul class="nav navbar-nav navbar-right visible-xs visible-sm">
 			<li>
 				<a class="toggle-navbar-new-comments" title="{%= __("Unread Messages") %}">
 					<span class="navbar-new-comments">0</span></a>
 			</li>
 		</ul>
-		<div class="hidden-xs">
+		<div class="hidden-xs hidden-sm">
 			<ul class="nav navbar-nav navbar-right">
 				<li class="dropdown">
 					<a class="dropdown-toggle" data-toggle="dropdown" href="#"
 						onclick="return false;">
-	                <img src="{%= frappe.user_info().image %}" class="navbar-user-image">
-	                <span>{%= frappe.user.full_name() %}</span>
+	                <img src="{%= frappe.user_info().image %}" class="navbar-user-image" alt="{%= frappe.user.abbr() %}">
+	                <span class="text-ellipsis toolbar-user-fullname">{%= frappe.user.full_name() %}</span>
 	                <b class="caret"></b></a>
 					<ul class="dropdown-menu" id="toolbar-user" role="menu">
 	                    <li><a href="#Form/User/{%= encodeURIComponent(user) %}">
@@ -34,7 +35,7 @@
 	    					{%= __("About") %}</a></li>
 	    				<li><a href="https://frappe.io" target="_blank" data-link="docs">
 	    					{%= __("Documentation") %}</a></li>
-	    				<li><a href="https://discuss.frappe.io" target="_blank">
+	    				<li><a href="https://discuss.erpnext.com" target="_blank">
 	    					{%= __("Forums") %}</a></li>
 	    				<li><a href="https://github.com/frappe/erpnext/issues" target="_blank">
 	    					{%= __("Report an Issue") %}</a></li>
@@ -52,9 +53,9 @@
 	            </li>
 	        </ul>
 	        <form class="navbar-form navbar-right" role="search" onsubmit="return false;">
-	          <div class="form-group form-group-sm">
+	          <div class="form-group form-group-sm ui-front">
 	            <input id="navbar-search" type="text" class="form-control"
-					placeholder="{%= __("Search or type a command") %}" aria-haspopup="true">
+					placeholder="{%= __("Search or type a command") %} {%= __("(Ctrl + G)") %}" aria-haspopup="true">
 				<span class="octicon octicon-search navbar-search-icon"></span>
 	          </div>
 	        </form>

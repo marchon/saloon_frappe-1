@@ -1,4 +1,5 @@
 @import "variables.less";
+@import "mixins.less";
 
 .page-container {
 	margin-top: 40px;
@@ -10,38 +11,65 @@
 	position: fixed;
 	left: 0;
 	right: 0;
+	top: 41px;
 	margin: auto;
 	background-color: #fff;
-	z-index: 2;
+	z-index: 101;
 }
 
 .sub-heading {
 	display: inline-block;
 	margin-right: 10px;
+	max-width: 50%;
+	vertical-align: middle;
 }
 
 .page-body {
 	overflow-x: hidden;
+	min-height: calc(100vh - 40px);
 }
 
-.page-title h6 {
-	margin-top: -8px;
+.page-title {
+	h6 {
+		margin-top: -8px;
+	}
+
+	h1 {
+		margin-top: 17px;
+	}
+
+	.indicator {
+		vertical-align: middle;
+	}
 }
 
 .page-title .title-text {
 	margin-right: 7px;
+	max-width: 75%;
+	display: inline-block;
+	vertical-align: middle;
+}
+
+.editable-title .title-text& {
+	cursor: pointer;
+	&:hover {
+		background-color: @light-yellow;
+	}
 }
 
 .page-actions {
-	padding-top: 20px;
-	padding-bottom: 20px;
+	padding-top: 17px;
+	padding-bottom: 17px;
 }
 
-.page-icon-group a {
-	margin-right: 7px;
+.page-icon-group {
+	vertical-align: middle;
+	a {
+		margin-right: 7px;
+	}
 }
 
-.layout-main {
+.page-content {
 	margin-top: 70px;
 }
 
@@ -56,8 +84,15 @@
 	border-top: 0px;
 }
 
-.form-intro-area {
-	padding: 15px;
+.layout-main-section-wrapper {
+	margin-bottom: 60px;
+}
+
+.layout-footer {
+	border: 1px solid @border-color;
+	border-top: 0px;
+	padding: 3px 15px;
+	font-size: @text-medium;
 }
 
 .page-form {
@@ -78,6 +113,50 @@
 	margin-top: -3px;
 }
 
-.layout-main-section-wrapper {
-	margin-bottom: 60px;
+select.input-sm {
+	line-height: 1.2em !important;
+}
+
+.message-page {
+	padding-top: 10rem;
+
+	.message-page-icon {
+		font-size: 10rem;
+		margin-bottom: 1rem;
+	}
+
+	.message-page-image {
+		margin-bottom: 1rem;
+	}
+
+	.btn-home {
+		margin-top: 1rem;
+	}
+}
+
+@media(max-width: @screen-sm) {
+	.page-head {
+		.page-title h1 {
+			font-size: 22px;
+			margin-top: 22px;
+		}
+	}
+}
+
+@media(max-width: @screen-xs) {
+	.page-actions {
+		width: 100px;
+		float: right;
+	}
+
+	.page-title {
+		position: absolute;
+		left: 0;
+		right: 101px;
+		width: 100%;
+	}
+
+	.page-head .page-title h1 {
+		font-size: 18px;
+	}
 }

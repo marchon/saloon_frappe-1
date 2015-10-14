@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -35,6 +35,9 @@ class UnsupportedMediaType(Exception):
 class Redirect(Exception):
 	http_status_code = 301
 
+class CSRFTokenError(Exception):
+	http_status_code = 400
+
 class DuplicateEntryError(NameError):pass
 class DataError(ValidationError): pass
 class UnknownDomainError(Exception): pass
@@ -53,3 +56,4 @@ class EmptyTableError(ValidationError): pass
 class LinkExistsError(ValidationError): pass
 class InvalidEmailAddressError(ValidationError): pass
 class TemplateNotFoundError(ValidationError): pass
+class UniqueValidationError(ValidationError): pass

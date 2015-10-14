@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 # Search
@@ -27,9 +27,7 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 	if not searchfield:
 		searchfield = "name"
 
-	standard_queries = frappe.get_hooks().standard_queries or []
-	if standard_queries:
-		standard_queries = dict([v.split(":") for v in standard_queries])
+	standard_queries = frappe.get_hooks().standard_queries or {}
 
 	if query and query.split()[0].lower()!="select":
 		# by method
@@ -37,13 +35,13 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 			searchfield, start, page_len, filters)
 	elif not query and doctype in standard_queries:
 		# from standard queries
-		search_widget(doctype, txt, standard_queries[doctype],
+		search_widget(doctype, txt, standard_queries[doctype][0],
 			searchfield, start, page_len, filters)
 	else:
 		if query:
+			frappe.throw("This query style is discontinued")
 			# custom query
-			frappe.response["values"] = frappe.db.sql(scrub_custom_query(query,
-				searchfield, txt))
+			# frappe.response["values"] = frappe.db.sql(scrub_custom_query(query, searchfield, txt))
 		else:
 			if isinstance(filters, dict):
 				filters_items = filters.items()
@@ -58,13 +56,21 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 				filters = []
 			or_filters = []
 
+
 			# build from doctype
 			if txt:
+				search_fields = ["name"]
+				if meta.title_field:
+					search_fields.append(meta.title_field)
+
 				if meta.search_fields:
-					for f in meta.get_search_fields():
-						or_filters.append([doctype, f.strip(), "like", "%{0}%".format(txt)])
-				else:
-					filters.append([doctype, searchfield or "name", "like", "%{0}%".format(txt)])
+					search_fields.extend(meta.get_search_fields())
+
+				for f in search_fields:
+					fmeta = meta.get_field(f.strip())
+					if f == "name" or (fmeta and fmeta.fieldtype in ["Data", "Text", "Small Text", "Long Text",
+						"Link", "Select", "Read Only", "Text Editor"]):
+							or_filters.append([doctype, f.strip(), "like", "%{0}%".format(txt)])
 
 			if meta.get("fields", {"fieldname":"enabled", "fieldtype":"Check"}):
 				filters.append([doctype, "enabled", "=", 1])
@@ -82,6 +88,7 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 				or_filters = or_filters, limit_start = start,
 				limit_page_length=page_len,
 				order_by="if(_relevance, _relevance, 99999), name asc".format(doctype),
+				ignore_permissions = True if doctype == "DocType" else False, # for dynamic links
 				as_list=True)
 
 			# remove _relevance from results
@@ -90,7 +97,8 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 def get_std_fields_list(meta, key):
 	# get additional search fields
 	sflist = meta.search_fields and meta.search_fields.split(",") or []
-	sflist = ['name'] + sflist
+	title_field = [meta.title_field] if (meta.title_field and meta.title_field not in sflist) else []
+	sflist = ['name'] + sflist + title_field
 	if not key in sflist:
 		sflist = sflist + [key]
 

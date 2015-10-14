@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.views.get_listview = function(doctype, parent) {
@@ -9,9 +9,6 @@ frappe.views.get_listview = function(doctype, parent) {
 	}
 	return listview;
 }
-
-frappe.provide("frappe.listview_settings");
-frappe.provide("frappe.listview_parent_route");
 
 // Renders customized list
 // usually based on `in_list_view` property
@@ -36,6 +33,8 @@ frappe.views.ListView = Class.extend({
 		this.doclistview.onreset = function() {
 			me.id_list = [];
 		}
+		this.order_by = this.settings.order_by;
+		this.group_by = this.settings.group_by;
 	},
 	set_fields: function() {
 		var me = this;
@@ -103,11 +102,15 @@ frappe.views.ListView = Class.extend({
 	set_columns: function() {
 		var me = this;
 		this.columns = [];
-		this.columns.push({
+		var name_column = {
 			colspan: this.settings.colwidths && this.settings.colwidths.subject || 6,
 			type: "Subject",
-			title: "Title"
-		});
+			title: "Name"
+		};
+		if (this.meta.title_field) {
+			name_column.title = frappe.meta.get_docfield(this.doctype, this.meta.title_field).label;
+		}
+		this.columns.push(name_column);
 		this.total_colspans = this.columns[0].colspan;
 
 		if(frappe.model.is_submittable(this.doctype)
@@ -163,7 +166,7 @@ frappe.views.ListView = Class.extend({
 	add_column: function(df) {
 		// field width
 		var colspan = 3;
-		if(in_list(["Int", "Percent", "Select"], df.fieldtype)) {
+		if(in_list(["Int", "Percent"], df.fieldtype)) {
 			colspan = 2;
 		} else if(in_list(["Check", "Image"], df.fieldtype)) {
 			colspan = 1;
@@ -205,11 +208,20 @@ frappe.views.ListView = Class.extend({
 			data: data,
 			columns: this.columns,
 			subject: this.get_avatar_and_id(data, true),
-			me: this,
+			list: this,
 			right_column: this.settings.right_column
 		});
 
-		$(frappe.render_template("list_item_row", {data: data, main: main, list: this})).appendTo(row);
+		$(frappe.render_template("list_item_row", {
+			data: data,
+			main: main,
+			list: this,
+			right_column: this.settings.right_column
+		})).appendTo(row);
+
+		if(this.settings.post_render_item) {
+			this.settings.post_render_item(this, row, data);
+		}
 
 		this.render_tags(row, data);
 
@@ -252,8 +264,12 @@ frappe.views.ListView = Class.extend({
 
 	get_indicator: function(doc) {
         var indicator = frappe.get_indicator(doc, this.doctype);
-        return '<span class="indicator '+indicator[1]+' filterable" data-filter="'
-			+indicator[2]+'">'+indicator[0]+'<span>';
+		if(indicator) {
+	        return '<span class="indicator '+indicator[1]+' filterable" data-filter="'
+				+indicator[2]+'">'+indicator[0]+'<span>';
+		} else {
+			return "";
+		}
 	},
 
 	get_indicator_dot: function(doc) {
@@ -278,7 +294,7 @@ frappe.views.ListView = Class.extend({
 		data._name_encoded = encodeURIComponent(data.name);
 		data._submittable = frappe.model.is_submittable(this.doctype);
 
-		data._title = data[this.title_field || "name"];
+		data._title = data[this.title_field || "name"] || data["name"];
 		data._full_title = data._title;
 
 		if(data._title.length > 40) {

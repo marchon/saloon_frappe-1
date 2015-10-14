@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -17,7 +17,7 @@ import sys
 
 host = "http://localhost"
 pipe = None
-port = "8888"
+port = "8000"
 _driver = None
 _verbose = None
 logged_in = False
@@ -32,6 +32,7 @@ def start(verbose=None, driver=None):
 	_verbose = verbose
 
 	_driver = getattr(webdriver, driver or "PhantomJS")()
+	_driver.set_window_size(1080,800)
 
 	signal.signal(signal.SIGINT, signal_handler)
 
@@ -41,7 +42,7 @@ def signal_handler(signal, frame):
 
 def start_test_server(verbose):
 	global pipe
-	pipe = subprocess.Popen(["frappe", "--serve", "--port", port], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	pipe = subprocess.Popen(["bench", "serve", "--port", port], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	#time.sleep(5)
 	while not pipe.stderr.readline():
 		time.sleep(0.5)
@@ -58,7 +59,7 @@ def login(wait_for_id="#page-desktop"):
 	get(get_localhost() + "/login")
 	wait("#login_email")
 	set_input("#login_email", "Administrator")
-	set_input("#login_password", "admin" + Keys.RETURN)
+	set_input("#login_password", "admin", key=Keys.RETURN)
 	wait(wait_for_id)
 	logged_in = True
 
@@ -67,15 +68,15 @@ def go_to_module(module_name, item=None):
 	global cur_route
 
 	# desktop
-	find(".navbar-brand")[0].click()
+	find(".navbar-home", True)[0].click()
 	cur_route = None
 	wait("#page-desktop")
 
 	page = "Module/" + module_name
-	m = find('#page-desktop [data-link="{0}"]'.format(page))
+	m = find('#page-desktop [data-link="{0}"] .app-icon'.format(page))
 	if not m:
 		page = "List/" + module_name
-		m = find('#page-desktop [data-link="{0}"]'.format(page))
+		m = find('#page-desktop [data-link="{0}"] .app-icon'.format(page))
 	if not m:
 		raise Exception, "Module {0} not found".format(module_name)
 
@@ -85,17 +86,22 @@ def go_to_module(module_name, item=None):
 	if item:
 		elem = find('[data-label="{0}"]'.format(item))[0]
 		elem.click()
-		page = unquote(elem.get_attribute("href").split("#", 1)[1])
+		page = elem.get_attribute("data-route")
 		wait_for_page(page)
 
 def new_doc(module, doctype):
 	go_to_module(module, doctype)
-	find('.appframe-iconbar .icon-plus')[0].click()
+	primary_action()
 	wait_for_page("Form/" + doctype)
 
 def add_child(fieldname):
 	find('[data-fieldname="{0}"] .grid-add-row'.format(fieldname))[0].click()
 	wait('[data-fieldname="{0}"] .form-grid'.format(fieldname))
+
+def done_add_child(fieldname):
+	selector = '[data-fieldname="{0}"] .grid-row-open .btn-success'.format(fieldname)
+	scroll_to(selector)
+	wait_till_clickable(selector).click()
 
 def find(selector, everywhere=False):
 	if cur_route and not everywhere:
@@ -103,7 +109,9 @@ def find(selector, everywhere=False):
 	return _driver.find_elements_by_css_selector(selector)
 
 def set_field(fieldname, value, fieldtype="input"):
-	set_input('{0}[data-fieldname="{1}"]'.format(fieldtype, fieldname), value + Keys.TAB)
+	_driver.switch_to.window(_driver.current_window_handle)
+	selector = '{0}[data-fieldname="{1}"]'.format(fieldtype, fieldname)
+	set_input(selector, value, key=Keys.TAB)
 	wait_for_ajax()
 
 def set_select(fieldname, value):
@@ -112,20 +120,33 @@ def set_select(fieldname, value):
 	wait_for_ajax()
 
 def primary_action():
-	find(".appframe-titlebar .btn-primary")[0].click()
+	selector = ".page-actions .primary-action"
+	scroll_to(selector)
+	wait_till_clickable(selector).click()
 	wait_for_ajax()
-
-def wait_for_ajax():
-	wait('body[data-ajax-state="complete"]', True)
 
 def wait_for_page(name):
 	global cur_route
 	cur_route = None
 	route = '[data-page-route="{0}"]'.format(name)
+	wait_for_ajax()
 	elem = wait(route)
 	wait_for_ajax()
 	cur_route = route
 	return elem
+
+def wait_till_clickable(selector):
+	if cur_route:
+		selector = cur_route + " " + selector
+	return get_wait().until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+
+def wait_till_visible(selector):
+	if cur_route:
+		selector = cur_route + " " + selector
+	return get_wait().until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
+
+def wait_for_ajax():
+	wait('body[data-ajax-state="complete"]', True)
 
 def wait_for_state(state):
 	return wait(cur_route + '[data-state="{0}"]'.format(state), True)
@@ -133,22 +154,29 @@ def wait_for_state(state):
 def wait(selector, everywhere=False):
 	if cur_route and not everywhere:
 		selector = cur_route + " " + selector
-	try:
-		elem = WebDriverWait(_driver, 20).until(
-			EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-		if _verbose:
-			print "found " + selector
-	except TimeoutException:
-		print "not found " + selector
-		raise
+
+	time.sleep(0.5)
+	elem = get_wait().until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
 	return elem
 
-def set_input(selector, text):
+def get_wait():
+	return WebDriverWait(_driver, 20)
+
+def set_input(selector, text, key=None):
 	elem = find(selector)[0]
 	elem.clear()
 	elem.send_keys(text)
+	if key:
+		time.sleep(0.5)
+		elem.send_keys(key)
 	if input_wait:
 		time.sleep(input_wait)
+
+def scroll_to(selector):
+	execute_script("frappe.ui.scroll('{0}')".format(selector))
+
+def execute_script(js):
+	_driver.execute_script(js)
 
 def close():
 	global _driver, pipe

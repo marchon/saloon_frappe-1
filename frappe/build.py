@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -15,7 +15,11 @@ import os, frappe, json, shutil, re
 app_paths = None
 def setup():
 	global app_paths
-	pymodules = [frappe.get_module(app) for app in frappe.get_all_apps(True)]
+	pymodules = []
+	for app in frappe.get_all_apps(True):
+		try:
+			pymodules.append(frappe.get_module(app))
+		except ImportError: pass
 	app_paths = [os.path.dirname(pymodule.__file__) for pymodule in pymodules]
 
 def bundle(no_compress, make_copy=False, verbose=False):
@@ -123,7 +127,8 @@ def pack(target, sources, no_compress, verbose):
 				tmpin, tmpout = StringIO(data.encode('utf-8')), StringIO()
 				jsm.minify(tmpin, tmpout)
 				minified = tmpout.getvalue()
-				outtxt += unicode(minified or '', 'utf-8').strip('\n') + ';'
+				if minified:
+					outtxt += unicode(minified or '', 'utf-8').strip('\n') + ';'
 
 				if verbose:
 					print "{0}: {1}k".format(f, int(len(minified) / 1024))
@@ -148,9 +153,14 @@ def pack(target, sources, no_compress, verbose):
 	print "Wrote %s - %sk" % (target, str(int(os.path.getsize(target)/1024)))
 
 def html_to_js_template(path, content):
-	content = re.sub("\s+", " ", content).replace("'", "\'")
+	# remove whitespace to a single space
+	content = re.sub("\s+", " ", content)
+
+	# strip comments
+	content =  re.sub("(<!--.*?-->)", "", content)
+
 	return """frappe.templates["{key}"] = '{content}';\n""".format(\
-		key=path.rsplit("/", 1)[-1][:-5], content=content)
+		key=path.rsplit("/", 1)[-1][:-5], content=content.replace("'", "\'"))
 
 def files_dirty():
 	for target, sources in get_build_maps().iteritems():
@@ -164,6 +174,10 @@ def files_dirty():
 		return False
 
 def compile_less():
+	from distutils.spawn import find_executable
+	if not find_executable("lessc"):
+		return
+
 	for path in app_paths:
 		less_path = os.path.join(path, "public", "less")
 		if os.path.exists(less_path):
@@ -175,6 +189,8 @@ def compile_less():
 						continue
 
 					timestamps[fpath] = mtime
+
 					print "compiling {0}".format(fpath)
-					os.system("lessc {0} > {1}".format(fpath,
-						os.path.join(path, "public", "css", fname.rsplit(".", 1)[0] + ".css")))
+
+					css_path = os.path.join(path, "public", "css", fname.rsplit(".", 1)[0] + ".css")
+					os.system("lessc {0} > {1}".format(fpath, css_path))

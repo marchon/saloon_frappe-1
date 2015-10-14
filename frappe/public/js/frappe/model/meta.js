@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.provide('frappe.meta.docfield_map');
@@ -6,6 +6,10 @@ frappe.provide('frappe.meta.docfield_copy');
 frappe.provide('frappe.meta.docfield_list');
 frappe.provide('frappe.meta.doctypes');
 frappe.provide("frappe.meta.precision_map");
+
+frappe.get_meta = function(doctype) {
+	return locals["DocType"][doctype];
+}
 
 $.extend(frappe.meta, {
 	sync: function(doc) {
@@ -41,9 +45,11 @@ $.extend(frappe.meta, {
 		if(!c[doctype][docname])
 			c[doctype][docname] = {};
 
-		$.each(frappe.meta.docfield_list[doctype] || [], function(i, df) {
+		var docfield_list = frappe.meta.docfield_list[doctype] || [];
+		for(var i=0, j=docfield_list.length; i<j; i++) {
+			var df = docfield_list[i];
 			c[doctype][docname][df.fieldname || df.label] = copy_dict(df);
-		})
+		}
 	},
 
 	get_docfield: function(dt, fn, dn) {
@@ -60,6 +66,11 @@ $.extend(frappe.meta, {
 		}
 
 		return docfields;
+	},
+
+	get_linked_fields: function(doctype) {
+		return $.map(frappe.get_meta(doctype).fields,
+			function(d) { return d.fieldtype=="Link" ? d.options : null; });
 	},
 
 	get_fields_to_check_permissions: function(doctype, name, user_permission_doctypes) {
@@ -110,7 +121,8 @@ $.extend(frappe.meta, {
 		if(fn==="owner") {
 			return "Owner";
 		} else {
-			return this.get_docfield(dt, fn, dn).label || fn;
+			var df = this.get_docfield(dt, fn, dn);
+			return (df ? df.label : "") || fn;
 		}
 	},
 

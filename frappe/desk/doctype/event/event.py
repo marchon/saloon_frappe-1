@@ -1,41 +1,45 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
 import frappe
 
-from frappe.utils import getdate, cint, add_months, date_diff, add_days, nowdate
+from frappe.utils import getdate, cint, add_months, date_diff, add_days, nowdate, get_datetime_str, cstr
 from frappe.model.document import Document
 from frappe.utils.user import get_enabled_system_users
 
 weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 class Event(Document):
+	def get_route(self):
+		"""for test-case"""
+		return "/Event/" + self.name
+
 	def validate(self):
 		if self.starts_on and self.ends_on and self.starts_on > self.ends_on:
 			frappe.msgprint(frappe._("Event end must be after start"), raise_exception=True)
-		if self.repeat_on == "Every Day" and self.starts_on and self.ends_on \
-			and int(date_diff(self.ends_on.split(" ")[0], self.starts_on.split(" ")[0])) > 0:
+
+		if self.starts_on == self.ends_on:
+			# this scenario doesn't make sense i.e. it starts and ends at the same second!
+			self.ends_on = None
+
+		if self.starts_on and self.ends_on and int(date_diff(self.ends_on.split(" ")[0], self.starts_on.split(" ")[0])) > 0 \
+			and self.repeat_on == "Every Day":
 			frappe.msgprint(frappe._("Every day events should finish on the same day."), raise_exception=True)
 
 def get_permission_query_conditions(user):
 	if not user: user = frappe.session.user
 	return """(tabEvent.event_type='Public' or tabEvent.owner='%(user)s'
-		or exists(select * from `tabEvent User` where
-			`tabEvent User`.parent=tabEvent.name and `tabEvent User`.person='%(user)s')
 		or exists(select * from `tabEvent Role` where
 			`tabEvent Role`.parent=tabEvent.name
 			and `tabEvent Role`.role in ('%(roles)s')))
 		""" % {
-			"user": user,
-			"roles": "', '".join(frappe.get_roles(user))
+			"user": frappe.db.escape(user),
+			"roles": "', '".join([frappe.db.escape(r) for r in frappe.get_roles(user)])
 		}
 
 def has_permission(doc, user):
 	if doc.event_type=="Public" or doc.owner==user:
-		return True
-
-	if doc.get("users", {"person": user}):
 		return True
 
 	if doc.get("roles", {"role":("in", frappe.get_roles(user))}):
@@ -82,8 +86,9 @@ def get_events(start, end, user=None, for_reminder=False):
 		))
 		%(reminder_condition)s
 		and (event_type='Public' or owner='%(user)s'
-		or exists(select * from `tabEvent User` where
-			`tabEvent User`.parent=tabEvent.name and person='%(user)s')
+		or exists(select name from `tabDocShare` where
+			tabDocShare.share_doctype="Event" and `tabDocShare`.share_name=tabEvent.name
+			and tabDocShare.user='%(user)s')
 		or exists(select * from `tabEvent Role` where
 			`tabEvent Role`.parent=tabEvent.name
 			and `tabEvent Role`.role in ('%(roles)s')))
@@ -113,8 +118,12 @@ def get_events(start, end, user=None, for_reminder=False):
 
 	for e in events:
 		if e.repeat_this_event:
-			event_start, time_str = e.starts_on.split(" ")
-			if e.repeat_till == None or "":
+			e.starts_on = get_datetime_str(e.starts_on)
+			if e.ends_on:
+				e.ends_on = get_datetime_str(e.ends_on)
+
+			event_start, time_str = get_datetime_str(e.starts_on).split(" ")
+			if cstr(e.repeat_till) == "":
 				repeat = "3000-01-01"
 			else:
 				repeat = e.repeat_till
@@ -126,7 +135,7 @@ def get_events(start, end, user=None, for_reminder=False):
 				# repeat for all years in period
 				for year in range(start_year, end_year+1):
 					date = str(year) + "-" + event_start
-					if date >= start and date <= end and date <= repeat:
+					if getdate(date) >= getdate(start) and getdate(date) <= getdate(end) and getdate(date) <= getdate(repeat):
 						add_event(e, date)
 
 				remove_events.append(e)
@@ -143,7 +152,8 @@ def get_events(start, end, user=None, for_reminder=False):
 
 				start_from = date
 				for i in xrange(int(date_diff(end, start) / 30) + 3):
-					if date >= start and date <= end and date <= repeat and date >= event_start:
+					if getdate(date) >= getdate(start) and getdate(date) <= getdate(end) \
+						and getdate(date) <= getdate(repeat) and getdate(date) >= getdate(event_start):
 						add_event(e, date)
 					date = add_months(start_from, i+1)
 
@@ -158,7 +168,8 @@ def get_events(start, end, user=None, for_reminder=False):
 				date = add_days(start, weekday - start_weekday)
 
 				for cnt in xrange(int(date_diff(end, start) / 7) + 3):
-					if date >= start and date <= end and date <= repeat and date >= event_start:
+					if getdate(date) >= getdate(start) and getdate(date) <= getdate(end) \
+						and getdate(date) <= getdate(repeat) and getdate(date) >= getdate(event_start):
 						add_event(e, date)
 
 					date = add_days(date, 7)
@@ -168,8 +179,8 @@ def get_events(start, end, user=None, for_reminder=False):
 			if e.repeat_on=="Every Day":
 				for cnt in xrange(date_diff(end, start) + 1):
 					date = add_days(start, cnt)
-					if date >= event_start and date <= end and date <= repeat \
-						and e[weekdays[getdate(date).weekday()]]:
+					if getdate(date) >= getdate(event_start) and getdate(date) <= getdate(end) \
+						and getdate(date) <= getdate(repeat) and e[weekdays[getdate(date).weekday()]]:
 						add_event(e, date)
 				remove_events.append(e)
 

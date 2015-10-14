@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 // assign to is lined to todo
@@ -10,13 +10,12 @@ frappe.provide("frappe.ui.form");
 
 frappe.ui.form.AssignTo = Class.extend({
 	init: function(opts) {
-		$.extend(this, opts);
 		var me = this;
-		this.$list = this.parent.find(".assign-list");
 
-		this.btn = this.parent.find(".add-assignment").click(function() {
-			me.add();
-		});
+		$.extend(this, opts);
+		this.btn = this.parent.find(".add-assignment").on("click", function() { me.add(); });
+		this.btn_wrapper = this.btn.parent();
+
 		this.refresh();
 	},
 	refresh: function() {
@@ -30,7 +29,7 @@ frappe.ui.form.AssignTo = Class.extend({
 	render: function(d) {
 		var me = this;
 		this.frm.get_docinfo().assignments = d;
-		this.$list.empty();
+		this.parent.find(".assignment-row").remove();
 
 		if(me.primary_action) {
 			me.primary_action.remove();
@@ -48,11 +47,16 @@ frappe.ui.form.AssignTo = Class.extend({
 				info.image = frappe.user_info(d[i].owner).image;
 				info.description = d[i].description || "";
 
-				$(repl('<div class="text-ellipsis">\
-					<a href="#" class="close" data-owner="%(owner)s">&times;</a>\
-					<span class="h6">%(fullname)s</span>\
-				</div>', info))
-					.appendTo(this.$list);
+				$(repl('<li class="assignment-row">\
+					<a class="close" data-owner="%(owner)s">&times;</a>\
+					<div class="text-ellipsis" style="width: 80%">\
+						<div class="avatar avatar-small">\
+							<img class="media-object" src="%(image)s" alt="%(fullname)s">\
+						</div>\
+						<span>%(fullname)s</span>\
+					</div>\
+				</li>', info))
+					.appendTo(this.parent);
 
 				if(d[i].owner===user) {
 					me.primary_action = this.frm.page.add_menu_item(__("Assignment Complete"), function() {
@@ -61,21 +65,20 @@ frappe.ui.form.AssignTo = Class.extend({
 				}
 
 				if(!(d[i].owner === user || me.frm.perm[0].write)) {
-					me.$list.find('a.close').remove();
+					me.parent.find('a.close').remove();
 				}
 			}
 
 			// set remove
-			this.$list.find('a.close').click(function() {
+			this.parent.find('a.close').click(function() {
 				me.remove($(this).attr('data-owner'));
 				return false;
 			});
 
-			this.btn.toggle(false);
+			this.btn_wrapper.addClass("hide");
 		} else {
-			this.btn.toggle(true);
+			this.btn_wrapper.removeClass("hide");
 		}
-
 	},
 	add: function() {
 		var me = this;
@@ -89,6 +92,7 @@ frappe.ui.form.AssignTo = Class.extend({
 			me.dialog = new frappe.ui.Dialog({
 				title: __('Add to To Do'),
 				fields: [
+					{fieldtype:'Check', fieldname:'myself', label:__("Assign to me"), "default":0},
 					{fieldtype:'Link', fieldname:'assign_to', options:'User',
 						label:__("Assign To"),
 						description:__("Add to To Do List Of"), reqd:true},
@@ -112,6 +116,16 @@ frappe.ui.form.AssignTo = Class.extend({
 		}
 
 		me.dialog.show();
+
+		me.dialog.get_input("myself").on("click", function() {
+			if($(this).prop("checked")) {
+				me.dialog.set_value("assign_to", user);
+				me.dialog.set_value("notify", 0);
+			} else {
+				me.dialog.set_value("assign_to", "");
+				me.dialog.set_value("notify", 1);
+			}
+		});
 	},
 	add_assignment: function() {
 		var me = this;

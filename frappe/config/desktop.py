@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from frappe import _
 
 def get_data():
@@ -44,6 +45,15 @@ def get_data():
 			"link": "List/Note",
 			"type": "list"
 		},
+		"File Manager": {
+			"color": "#905df5",
+			"doctype": "File",
+			"icon": "icon-folder-close",
+			"icon": "octicon octicon-file-directory",
+			"label": _("File Manager"),
+			"link": "List/File",
+			"type": "list"
+		},
 		"Website": {
 			"color": "#16a085",
 			"icon": "icon-globe",
@@ -51,7 +61,7 @@ def get_data():
 			"type": "module"
 		},
 		"Installer": {
-			"color": "#888",
+			"color": "#5ac8fb",
 			"icon": "icon-download",
 			"icon": "octicon octicon-cloud-download",
 			"link": "applications",
@@ -71,4 +81,10 @@ def get_data():
 			"type": "module",
 			"system_manager": 1
 		},
+		"Integrations": {
+			"color": "#36414C",
+			"icon": "octicon octicon-plug",
+			"type": "module",
+			"system_manager": 1
+		}
 	}

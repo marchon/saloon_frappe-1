@@ -1,18 +1,22 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
-from __future__ import unicode_literals
+from __future__ import unicode_literals, absolute_import
 import frappe
 import json
-from frappe.utils import get_url, cint, scrub_urls, get_formatted_email
-from frappe.email.email_body import get_email
+from email.utils import formataddr, parseaddr
+from frappe.utils import get_url, get_formatted_email, cstr, cint, validate_email_add, split_emails
+from frappe.utils.file_manager import get_file
 import frappe.email.smtp
 from frappe import _
 
 from frappe.model.document import Document
 
 class Communication(Document):
+	no_feed_on_delete = True
+
 	"""Communication represents an external communication like Email."""
+
 	def get_parent_doc(self):
 		"""Returns document of `reference_doctype`, `reference_doctype`"""
 		if not hasattr(self, "parent_doc"):
@@ -21,6 +25,31 @@ class Communication(Document):
 			else:
 				self.parent_doc = None
 		return self.parent_doc
+
+	def validate(self):
+		if self.get("__islocal"):
+			if self.reference_doctype and self.reference_name:
+				self.status = "Linked"
+			else:
+				self.status = "Open"
+
+		# validate recipients
+		for email in split_emails(self.recipients):
+			validate_email_add(email, throw=True)
+
+		# validate CC
+		for email in split_emails(self.cc):
+			validate_email_add(email, throw=True)
+
+	def after_insert(self):
+		# send new comment to listening clients
+		comment = self.as_dict()
+		comment["comment"] = comment["content"]
+		comment["comment_by"] = comment["sender"]
+		comment["comment_type"] = comment["communication_medium"]
+
+		frappe.publish_realtime('new_comment', comment, doctype = self.reference_doctype,
+			docname = self.reference_name)
 
 	def on_update(self):
 		"""Update parent status as `Open` or `Replied`."""
@@ -38,19 +67,90 @@ class Communication(Document):
 			to_status = "Open" if self.sent_or_received=="Received" else "Replied"
 
 			if to_status in status_field.options.splitlines():
-				frappe.db.set_value(parent.doctype, parent.name, "status", to_status)
+				parent.db_set("status", to_status)
 
-	def send(self, print_html=None, print_format=None,
-		attachments=None):
+		parent.notify_update()
+
+	def send(self, print_html=None, print_format=None, attachments=None,
+		send_me_a_copy=False, recipients=None):
 		"""Send communication via Email.
 
 		:param print_html: Send given value as HTML attachment.
 		:param print_format: Attach print format of parent document."""
 
-		self.notify(self.get_email(print_html, print_format, attachments))
+		self.send_me_a_copy = send_me_a_copy
+		self.notify(print_html, print_format, attachments, recipients)
 
-	def get_email(self, print_html=None, print_format=None, attachments=None):
-		"""Make multipart MIME Email
+	def notify(self, print_html=None, print_format=None, attachments=None,
+		recipients=None, cc=None, fetched_from_email_account=False):
+		"""Calls a delayed celery task 'sendmail' that enqueus email in Bulk Email queue
+
+		:param print_html: Send given value as HTML attachment
+		:param print_format: Attach print format of parent document
+		:param attachments: A list of filenames that should be attached when sending this email
+		:param recipients: Email recipients
+		:param cc: Send email as CC to
+		:param fetched_from_email_account: True when pulling email, the notification shouldn't go to the main recipient
+
+		"""
+		recipients, cc = self.get_recipients_and_cc(recipients, cc,
+			fetched_from_email_account=fetched_from_email_account)
+
+		self.emails_not_sent_to = set(self.all_email_addresses) - set(recipients) - set(cc)
+
+		if frappe.flags.in_test:
+			# for test cases, run synchronously
+			self._notify(print_html=print_html, print_format=print_format, attachments=attachments,
+				recipients=recipients, cc=cc)
+		else:
+			from frappe.tasks import sendmail
+			sendmail.delay(frappe.local.site, self.name,
+				print_html=print_html, print_format=print_format, attachments=attachments,
+				recipients=recipients, cc=cc)
+
+	def _notify(self, print_html=None, print_format=None, attachments=None,
+		recipients=None, cc=None):
+
+		self.prepare_to_notify(print_html, print_format, attachments)
+
+		frappe.sendmail(
+			recipients=(recipients or []) + (cc or []),
+			expose_recipients=True,
+			sender=self.sender,
+			reply_to=self.incoming_email_account,
+			subject=self.subject,
+			content=self.content,
+			reference_doctype=self.reference_doctype,
+			reference_name=self.reference_name,
+			attachments=self.attachments,
+			message_id=self.name,
+			unsubscribe_message=_("Leave this conversation"),
+			bulk=True
+		)
+
+	def get_recipients_and_cc(self, recipients, cc, fetched_from_email_account=False):
+		self.all_email_addresses = []
+
+		if not recipients:
+			recipients = self.get_recipients()
+
+		if not cc:
+			cc = self.get_cc(recipients, fetched_from_email_account=fetched_from_email_account)
+
+		if fetched_from_email_account:
+			# email was already sent to the original recipient by the sender's email service
+			original_recipients, recipients = recipients, []
+
+			# cc that was received in the email
+			original_cc = split_emails(self.cc)
+
+			# don't cc to people who already received the mail from sender's email service
+			cc = list(set(cc) - set(original_cc) - set(original_recipients))
+
+		return recipients, cc
+
+	def prepare_to_notify(self, print_html=None, print_format=None, attachments=None):
+		"""Prepare to make multipart MIME Email
 
 		:param print_html: Send given value as HTML attachment.
 		:param print_format: Attach print format of parent document."""
@@ -58,76 +158,157 @@ class Communication(Document):
 		if print_format:
 			self.content += self.get_attach_link(print_format)
 
-		default_incoming = frappe.db.get_value("Email Account", {"default_incoming": 1}, "email_id")
-		default_outgoing = frappe.db.get_value("Email Account", {"default_outgoing": 1}, "email_id")
+		self.set_incoming_outgoing_accounts()
 
-		self.sender = "{0} <{1}>".format(frappe.session.data.full_name or "Notification", default_outgoing)
+		if not self.sender or cint(self.outgoing_email_account.always_use_account_email_id_as_sender):
+			self.sender = formataddr([frappe.session.data.full_name or "Notification", self.outgoing_email_account.email_id])
 
-		mail = get_email(self.recipients, sender=self.sender, subject=self.subject,
-			content=self.content, reply_to=default_incoming)
-
-		mail.set_message_id(self.name)
+		self.attachments = []
 
 		if print_html or print_format:
-			attach_print(mail, self.get_parent_doc(), print_html, print_format)
-
-		if isinstance(attachments, basestring):
-			attachments = json.loads(attachments)
+			self.attachments.append(frappe.attach_print(self.reference_doctype, self.reference_name,
+				print_format=print_format, html=print_html))
 
 		if attachments:
+			if isinstance(attachments, basestring):
+				attachments = json.loads(attachments)
+
 			for a in attachments:
-				try:
-					mail.attach_file(a)
-				except IOError:
-					frappe.throw(_("Unable to find attachment {0}").format(a))
+				if isinstance(a, basestring):
+					# is it a filename?
+					try:
+						file = get_file(a)
+						self.attachments.append({"fname": file[0], "fcontent": file[1]})
+					except IOError:
+						frappe.throw(_("Unable to find attachment {0}").format(a))
+				else:
+					self.attachments.append(a)
 
-		return mail
+	def set_incoming_outgoing_accounts(self):
+		self.incoming_email_account = self.outgoing_email_account = None
 
-	def add_to_mail_queue(self, mail):
-		mail = frappe.get_doc({
-			"doctype": "Bulk Email",
-			"sender": mail.sender,
-			"recipient": mail.recipients[0],
-			"message": mail.as_string(),
-			"ref_doctype": self.reference_doctype,
-			"ref_docname": self.reference_name
-		}).insert(ignore_permissions=True)
+		if self.reference_doctype:
+			self.incoming_email_account = frappe.db.get_value("Email Account",
+				{"append_to": self.reference_doctype, "enable_incoming": 1}, "email_id")
 
-	def notify(self, mail, except_sender=False):
-		for recipient in self.get_recipients():
-			if except_sender and recipient == self.sender:
-				continue
-			mail.recipients = [recipient]
-			self.add_to_mail_queue(mail)
+			self.outgoing_email_account = frappe.db.get_value("Email Account",
+				{"append_to": self.reference_doctype, "enable_outgoing": 1},
+				["email_id", "always_use_account_email_id_as_sender"], as_dict=True)
+
+		if not self.incoming_email_account:
+			self.incoming_email_account = frappe.db.get_value("Email Account",
+				{"default_incoming": 1, "enable_incoming": 1},  "email_id")
+
+		if not self.outgoing_email_account:
+			self.outgoing_email_account = frappe.db.get_value("Email Account",
+				{"default_outgoing": 1, "enable_outgoing": 1},
+				["email_id", "always_use_account_email_id_as_sender"], as_dict=True) or frappe._dict()
 
 	def get_recipients(self):
-		# Earlier repliers
-		recipients = frappe.db.sql_list("""
-			select distinct sender
-			from tabCommunication where
-			reference_doctype=%s and reference_name=%s""",
-				(self.reference_doctype, self.reference_name))
+		"""Build a list of email addresses for To"""
+		# [EDGE CASE] self.recipients can be None when an email is sent as BCC
+		recipients = split_emails(self.recipients)
 
-		# Commentors
-		recipients += frappe.db.sql_list("""
-			select distinct comment_by
-			from tabComment where
-			comment_doctype=%s and comment_docname=%s and
-			ifnull(unsubscribed, 0)=0 and comment_by!='Administrator'""",
-				(self.reference_doctype, self.reference_name))
+		if recipients:
+			# this will be used to eventually find email addresses that aren't sent to
+			self.all_email_addresses.extend(recipients)
 
-		# Explicit recipients
-		recipients += [s.strip() for s in self.recipients.split(",")]
+			# exclude email accounts
+			exclude = [d[0] for d in
+				frappe.db.get_all("Email Account", ["email_id"], {"enable_incoming": 1}, as_list=True)]
+			exclude += [d[0] for d in
+				frappe.db.get_all("Email Account", ["login_id"], {"enable_incoming": 1}, as_list=True)
+				if d[0]]
 
-		# Assigned
-		assigned = frappe.db.get_value("ToDo", {"reference_type": self.reference_doctype,
-			"reference_name": self.reference_name, "status": "Open"}, "owner")
-		if assigned:
-			recipients.append(assigned)
-
-		recipients = filter(lambda e: e and e!="Administrator", list(set(recipients)))
+			recipients = self.filter_email_list(recipients, exclude)
 
 		return recipients
+
+	def get_cc(self, recipients=None, fetched_from_email_account=False):
+		"""Build a list of email addresses for CC"""
+		# get a copy of CC list
+		cc = split_emails(self.cc)
+
+		if self.reference_doctype and self.reference_name:
+			if not cc or fetched_from_email_account:
+				# if CC is not mentioned from the UI or is a fetched email, add follows to CC
+				cc.append(self.get_owner_email())
+				cc += self.get_assignees()
+				cc += self.get_starrers()
+
+		if fetched_from_email_account and self.in_reply_to:
+			# add sender of previous reply
+			cc.append(frappe.db.get_value("Communication", self.in_reply_to, "sender"))
+
+		if cc:
+			# this will be used to eventually find email addresses that aren't sent to
+			self.all_email_addresses.extend(cc)
+
+			# exclude email accounts, unfollows, recipients and unsubscribes
+			exclude = [d[0] for d in
+				frappe.db.get_all("Email Account", ["email_id"], {"enable_incoming": 1}, as_list=True)]
+			exclude += [d[0] for d in
+				frappe.db.get_all("Email Account", ["login_id"], {"enable_incoming": 1}, as_list=True)
+				if d[0]]
+			exclude += [d[0] for d in frappe.db.get_all("User", ["name"], {"thread_notify": 0}, as_list=True)]
+			exclude += [parseaddr(email)[1] for email in recipients]
+
+			if fetched_from_email_account:
+				# exclude sender when pulling email
+				exclude += [parseaddr(self.sender)[1]]
+
+			if self.reference_doctype and self.reference_name:
+				exclude += [d[0] for d in frappe.db.get_all("Email Unsubscribe", ["email"],
+					{"reference_doctype": self.reference_doctype, "reference_name": self.reference_name}, as_list=True)]
+
+			cc = self.filter_email_list(cc, exclude)
+
+		if getattr(self, "send_me_a_copy", False) and self.sender not in cc:
+			self.all_email_addresses.append(self.sender)
+			cc.append(self.sender)
+
+		return cc
+
+	def filter_email_list(self, email_list, exclude):
+		# temp variables
+		filtered = []
+		email_address_list = []
+
+		for email in list(set(email_list)):
+			if email in exclude:
+				continue
+
+			email_address = (parseaddr(email)[1] or "").lower()
+			if not email_address:
+				continue
+
+			if email_address in exclude:
+				continue
+
+			# make sure of case-insensitive uniqueness of email address
+			if email_address not in email_address_list:
+				# append the full email i.e. "Human <human@example.com>"
+				filtered.append(email)
+				email_address_list.append(email_address)
+
+		return filtered
+
+	def get_starrers(self):
+		"""Return list of users who have starred this document."""
+		return [( get_formatted_email(user) or user ) for user in self.get_parent_doc().get_starred_by()]
+
+	def get_owner_email(self):
+		owner = self.get_parent_doc().owner
+		return get_formatted_email(owner) or owner
+
+	def get_assignees(self):
+		return [( get_formatted_email(d.owner) or d.owner ) for d in
+			frappe.db.get_all("ToDo", filters={
+				"reference_type": self.reference_doctype,
+				"reference_name": self.reference_name,
+				"status": "Open"
+			}, fields=["owner"])
+		]
 
 	def get_attach_link(self, print_format):
 		"""Returns public link for the attachment via `templates/emails/print_link.html`."""
@@ -146,7 +327,8 @@ def on_doctype_update():
 @frappe.whitelist()
 def make(doctype=None, name=None, content=None, subject=None, sent_or_received = "Sent",
 	sender=None, recipients=None, communication_medium="Email", send_email=False,
-	print_html=None, print_format=None, attachments='[]'):
+	print_html=None, print_format=None, attachments='[]', ignore_doctype_permissions=False,
+	send_me_a_copy=False, cc=None):
 	"""Make a new communication.
 
 	:param doctype: Reference DocType.
@@ -160,18 +342,26 @@ def make(doctype=None, name=None, content=None, subject=None, sent_or_received =
 	:param send_mail: Send via email (default **False**).
 	:param print_html: HTML Print format to be sent as attachment.
 	:param print_format: Print Format name of parent document to be sent as attachment.
-	:param attachments: List of attachments as list of files or JSON string."""
+	:param attachments: List of attachments as list of files or JSON string.
+	:param send_me_a_copy: Send a copy to the sender (default **False**).
+	"""
 
-	if doctype and name and not frappe.has_permission(doctype, "email", name):
+	is_error_report = (doctype=="User" and name==frappe.session.user and subject=="Error Report")
+
+	if doctype and name and not is_error_report and not frappe.has_permission(doctype, "email", name) and not ignore_doctype_permissions:
 		raise frappe.PermissionError("You are not allowed to send emails related to: {doctype} {name}".format(
 			doctype=doctype, name=name))
+
+	if not sender and frappe.session.user != "Administrator":
+		sender = get_formatted_email(frappe.session.user)
 
 	comm = frappe.get_doc({
 		"doctype":"Communication",
 		"subject": subject,
 		"content": content,
-		"sender": sender or get_formatted_email(frappe.session.user),
+		"sender": sender,
 		"recipients": recipients,
+		"cc": cc or None,
 		"communication_medium": "Email",
 		"sent_or_received": sent_or_received,
 		"reference_doctype": doctype,
@@ -179,31 +369,18 @@ def make(doctype=None, name=None, content=None, subject=None, sent_or_received =
 	})
 	comm.insert(ignore_permissions=True)
 
+	# needed for communication.notify which uses celery delay
+	# if not committed, delayed task doesn't find the communication
+	frappe.db.commit()
+
 	if send_email:
-		comm.send(print_html, print_format, attachments)
+		comm.send_me_a_copy = send_me_a_copy
+		comm.send(print_html, print_format, attachments, send_me_a_copy=send_me_a_copy)
 
-	return comm.name
-
-def attach_print(mail, parent_doc, print_html, print_format):
-	name = parent_doc.name if parent_doc else "attachment"
-	if (not print_html) and parent_doc and print_format:
-		print_html = frappe.get_print_format(parent_doc.doctype, parent_doc.name, print_format)
-
-	print_settings = frappe.db.get_singles_dict("Print Settings")
-	send_print_as_pdf = cint(print_settings.send_print_as_pdf)
-
-	if send_print_as_pdf:
-		try:
-			mail.add_pdf_attachment(name.replace(' ','').replace('/','-') + '.pdf', print_html)
-		except Exception:
-			frappe.msgprint(_("Error generating PDF, attachment sent as HTML"))
-			frappe.errprint(frappe.get_traceback())
-			send_print_as_pdf = 0
-
-	if not send_print_as_pdf:
-		print_html = scrub_urls(print_html)
-		mail.add_attachment(name.replace(' ','').replace('/','-') + '.html',
-			print_html, 'text/html')
+	return {
+		"name": comm.name,
+		"emails_not_sent_to": ", ".join(comm.emails_not_sent_to) if hasattr(comm, "emails_not_sent_to") else None
+	}
 
 @frappe.whitelist()
 def get_convert_to():

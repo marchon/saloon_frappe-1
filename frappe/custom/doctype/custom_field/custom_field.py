@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -30,7 +30,7 @@ class CustomField(Document):
 
 	def on_update(self):
 		frappe.clear_cache(doctype=self.dt)
-		if not getattr(self, "ignore_validate", False):
+		if not self.flags.ignore_validate:
 			# validate field
 			from frappe.core.doctype.doctype.doctype import validate_fields_for_doctype
 			validate_fields_for_doctype(self.dt)
@@ -59,7 +59,7 @@ class CustomField(Document):
 		dt_meta = frappe.get_meta(self.dt)
 		if not dt_meta.get_field(self.insert_after):
 			frappe.throw(_("Insert After field '{0}' mentioned in Custom Field '{1}', does not exist")
-				.format(dt_meta.get_label(self.insert_after), self.label), frappe.DoesNotExistError)
+				.format(self.insert_after, self.label), frappe.DoesNotExistError)
 
 		frappe.db.sql("""\
 			DELETE FROM `tabProperty Setter`

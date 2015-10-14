@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -11,7 +11,6 @@ from frappe import _
 import frappe.model.document
 import frappe.utils
 import frappe.sessions
-import frappe.model.utils
 import werkzeug.utils
 from werkzeug.local import LocalProxy
 from werkzeug.wsgi import wrap_file
@@ -19,7 +18,7 @@ from werkzeug.wrappers import Response
 from werkzeug.exceptions import NotFound, Forbidden
 
 def report_error(status_code):
-	if status_code!=404 or frappe.conf.logging:
+	if (status_code!=404 or frappe.conf.logging) and not frappe.local.flags.disable_traceback:
 		frappe.errprint(frappe.utils.get_traceback())
 
 	response = build_response("json")
@@ -65,18 +64,21 @@ def as_json():
 	response.data = json.dumps(frappe.local.response, default=json_handler, separators=(',',':'))
 	return response
 
-def make_logs():
+def make_logs(response = None):
 	"""make strings for msgprint and errprint"""
+	if not response:
+		response = frappe.local.response
+
 	if frappe.error_log:
 		# frappe.response['exc'] = json.dumps("\n".join([cstr(d) for d in frappe.error_log]))
-		frappe.response['exc'] = json.dumps([frappe.utils.cstr(d) for d in frappe.local.error_log])
+		response['exc'] = json.dumps([frappe.utils.cstr(d) for d in frappe.local.error_log])
 
 	if frappe.local.message_log:
-		frappe.response['_server_messages'] = json.dumps([frappe.utils.cstr(d) for
+		response['_server_messages'] = json.dumps([frappe.utils.cstr(d) for
 			d in frappe.local.message_log])
 
 	if frappe.debug_log and frappe.conf.get("logging") or False:
-		frappe.response['_debug_messages'] = json.dumps(frappe.local.debug_log)
+		response['_debug_messages'] = json.dumps(frappe.local.debug_log)
 
 def json_handler(obj):
 	"""serialize non-serializable data for json"""

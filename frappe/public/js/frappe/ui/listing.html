@@ -20,16 +20,16 @@
 	<div class="result">
 		<div class="list-headers"></div>
         <div class="list-loading text-center">
-        	{%= __("Loading") %}...
+        	{%= frappe.messages.get_waiting_message(__("Loading") + "..." ) %}
         </div>
 		<div class="result-list"></div>
 	</div>
 	<div class="list-paging-area" style="display: none;">
 		<div class="row">
-			<div class="col-sm-6">
+			<div class="col-xs-6">
 				<button class="btn btn-default btn-more btn-sm">{%= _more %}...</button>
 			</div>
-			<div class="col-sm-6">
+			<div class="col-xs-6">
 				<div class="btn-group pull-right btn-group-paging">
 					<button type="button" class="btn btn-default btn-sm btn-info" data-value="20">20</button>
 					<button type="button" class="btn btn-default btn-sm" data-value="100">100</button>

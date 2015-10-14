@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -33,6 +33,17 @@ def get_mapped_doc(from_doctype, from_docname, table_maps, target_doc=None,
 	for df in source_doc.meta.get_table_fields():
 		source_child_doctype = df.options
 		table_map = table_maps.get(source_child_doctype)
+
+		# if table_map isn't explicitly specified check if both source and target have the same fieldname and same table options and both of them don't have no_copy
+		if not table_map:
+			target_df = target_doc.meta.get_field(df.fieldname)
+			if target_df:
+				target_child_doctype = target_df.options
+				if target_df and target_child_doctype==source_child_doctype and not df.no_copy and not target_df.no_copy:
+					table_map = {
+						"doctype": target_child_doctype
+					}
+
 		if table_map:
 			for source_d in source_doc.get(df.fieldname):
 				if "condition" in table_map:
@@ -59,6 +70,7 @@ def get_mapped_doc(from_doctype, from_docname, table_maps, target_doc=None,
 	if postprocess:
 		postprocess(source_doc, target_doc)
 
+	target_doc.set_onload("load_after_mapping", True)
 	return target_doc
 
 def map_doc(source_doc, target_doc, table_map, source_parent=None):
@@ -77,8 +89,8 @@ def map_doc(source_doc, target_doc, table_map, source_parent=None):
 def map_fields(source_doc, target_doc, table_map, source_parent):
 	no_copy_fields = set([d.fieldname for d in source_doc.meta.get("fields") if (d.no_copy==1 or d.fieldtype=="Table")]
 		+ [d.fieldname for d in target_doc.meta.get("fields") if (d.no_copy==1 or d.fieldtype=="Table")]
-		+ default_fields
-		+ table_map.get("field_no_map", []))
+		+ list(default_fields)
+		+ list(table_map.get("field_no_map", [])))
 
 	for df in target_doc.meta.get("fields"):
 		if df.fieldname not in no_copy_fields:
@@ -121,10 +133,7 @@ def map_fields(source_doc, target_doc, table_map, source_parent):
 			map_fetch_fields(target_doc, df, no_copy_fields)
 
 def map_fetch_fields(target_doc, df, no_copy_fields):
-	try:
-		linked_doc = frappe.get_doc(df.options, target_doc.get(df.fieldname))
-	except:
-		return
+	linked_doc = None
 
 	# options should be like "link_fieldname.fieldname_in_liked_doc"
 	for fetch_df in target_doc.meta.get("fields", {"options": "^{0}.".format(df.fieldname)}):
@@ -133,6 +142,13 @@ def map_fetch_fields(target_doc, df, no_copy_fields):
 
 		if not target_doc.get(fetch_df.fieldname) and fetch_df.fieldname not in no_copy_fields:
 			source_fieldname = fetch_df.options.split(".")[1]
+
+			if not linked_doc:
+				try:
+					linked_doc = frappe.get_doc(df.options, target_doc.get(df.fieldname))
+				except:
+					return
+
 			val = linked_doc.get(source_fieldname)
 
 			if val not in (None, ""):
@@ -144,6 +160,7 @@ def map_child_doc(source_d, target_parent, table_map, source_parent=None):
 	target_d = frappe.new_doc(target_child_doctype, target_parent, target_parentfield)
 
 	map_doc(source_d, target_d, table_map, source_parent)
+
 	target_d.idx = None
 	target_parent.append(target_parentfield, target_d)
 	return target_d

@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -9,7 +9,6 @@ from frappe import _
 from frappe.utils import now, cint
 from frappe.model import no_value_fields
 from frappe.model.document import Document
-from frappe.model.db_schema import type_map
 from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 from frappe.desk.notifications import delete_notification_count_for
 from frappe.modules import make_boilerplate
@@ -19,7 +18,6 @@ form_grid_templates = {
 }
 
 class DocType(Document):
-	__doclink__ = "https://frappe.io/docs/models/core/doctype"
 	def get_feed(self):
 		return self.name
 
@@ -39,6 +37,7 @@ class DocType(Document):
 		self.validate_series()
 		self.scrub_field_names()
 		self.validate_title_field()
+		self.validate_document_type()
 		validate_fields(self)
 
 		if self.istable:
@@ -48,6 +47,12 @@ class DocType(Document):
 			validate_permissions(self)
 
 		self.make_amendable()
+
+	def validate_document_type(self):
+		if self.document_type=="Transaction":
+			self.document_type = "Document"
+		if self.document_type=="Master":
+			self.document_type = "Setup"
 
 	def change_modified_of_parent(self):
 		"""Change the timestamp of parent DocType if the current one is a child to clear caches."""
@@ -89,7 +94,7 @@ class DocType(Document):
 
 		if autoname and (not autoname.startswith('field:')) \
 			and (not autoname.startswith('eval:')) \
-			and (not autoname in ('Prompt', 'hash')) \
+			and (not autoname.lower() in ('prompt', 'hash')) \
 			and (not autoname.startswith('naming_series:')):
 
 			prefix = autoname.split('.')[0]
@@ -106,19 +111,25 @@ class DocType(Document):
 		make_module_and_roles(self)
 
 		from frappe import conf
-		if not (frappe.flags.in_import or frappe.flags.in_test) and conf.get('developer_mode') or 0:
+		if not self.custom and not (frappe.flags.in_import or frappe.flags.in_test) and conf.get('developer_mode'):
 			self.export_doc()
 			self.make_controller_template()
 
 		# update index
-		if not getattr(self, "custom", False):
-			from frappe.modules import load_doctype_module
-			module = load_doctype_module(self.name, self.module)
-			if hasattr(module, "on_doctype_update"):
-				module.on_doctype_update()
+		if not self.custom:
+			self.run_module_method("on_doctype_update")
+			if self.flags.in_insert:
+				self.run_module_method("after_doctype_insert")
 
 		delete_notification_count_for(doctype=self.name)
 		frappe.clear_cache(doctype=self.name)
+
+	def run_module_method(self, method):
+		from frappe.modules import load_doctype_module
+		module = load_doctype_module(self.name, self.module)
+		if hasattr(module, method):
+			getattr(module, method)()
+
 
 	def before_rename(self, old, new, merge=False):
 		"""Throw exception if merge. DocTypes cannot be merged."""
@@ -146,7 +157,7 @@ class DocType(Document):
 			return
 
 		# check if atleast 1 record exists
-		if not (frappe.db.table_exists("tab" + self.name) and frappe.db.sql("select name from `tab{}` limit 1".format(self.name))):
+		if not (frappe.db.table_exists(self.name) and frappe.db.sql("select name from `tab{}` limit 1".format(self.name))):
 			return
 
 		existing_property_setter = frappe.db.get_value("Property Setter", {"doc_type": self.name,
@@ -173,7 +184,6 @@ class DocType(Document):
 
 		if not (self.istable or self.issingle):
 			make_boilerplate("test_controller.py", self)
-			make_boilerplate("test_records.json", self)
 
 	def make_amendable(self):
 		"""If is_submittable is set, add amended_from docfields."""
@@ -236,8 +246,13 @@ def validate_fields(meta):
 				frappe.throw(_("Options requried for Link or Table type field {0} in row {1}").format(d.label, d.idx))
 			if d.options=="[Select]" or d.options==d.parent:
 				return
-			if d.options != d.parent and not frappe.db.exists("DocType", d.options):
-				frappe.throw(_("Options must be a valid DocType for field {0} in row {1}").format(d.label, d.idx))
+			if d.options != d.parent:
+				options = frappe.db.get_value("DocType", d.options, "name")
+				if not options:
+					frappe.throw(_("Options must be a valid DocType for field {0} in row {1}").format(d.label, d.idx))
+				else:
+					# fix case
+					d.options = options
 
 	def check_hidden_and_mandatory(d):
 		if d.hidden and d.reqd and not d.default:
@@ -254,17 +269,26 @@ def validate_fields(meta):
 	def check_dynamic_link_options(d):
 		if d.fieldtype=="Dynamic Link":
 			doctype_pointer = filter(lambda df: df.fieldname==d.options, fields)
-			if not doctype_pointer or (doctype_pointer[0].fieldtype!="Link") \
-				or (doctype_pointer[0].options!="DocType"):
+			if not doctype_pointer or (doctype_pointer[0].fieldtype not in ("Link", "Select")) \
+				or (doctype_pointer[0].fieldtype=="Link" and doctype_pointer[0].options!="DocType"):
 				frappe.throw(_("Options 'Dynamic Link' type of field must point to another Link Field with options as 'DocType'"))
 
 	def check_illegal_default(d):
 		if d.fieldtype == "Check" and d.default and d.default not in ('0', '1'):
 			frappe.throw(_("Default for 'Check' type of field must be either '0' or '1'"))
+		if d.fieldtype == "Select" and d.default and (d.default not in d.options.split("\n")):
+			frappe.throw(_("Default for {0} must be an option").format(d.fieldname))
 
 	def check_precision(d):
 		if d.fieldtype in ("Currency", "Float", "Percent") and d.precision is not None and not (1 <= cint(d.precision) <= 6):
 			frappe.throw(_("Precision should be between 1 and 6"))
+
+	def check_unique_and_text(d):
+		if getattr(d, "unique", False) and d.fieldtype in ("Text", "Long Text", "Small Text", "Code", "Text Editor"):
+			frappe.throw(_("Fieldtype {0} for {1} cannot be unique").format(d.fieldtype, d.label))
+
+		if d.search_index and d.fieldtype in ("Text", "Long Text", "Small Text", "Code", "Text Editor"):
+			frappe.throw(_("Fieldtype {0} for {1} cannot be indexed").format(d.fieldtype, d.label))
 
 	def check_fold(fields):
 		fold_exists = False
@@ -273,11 +297,10 @@ def validate_fields(meta):
 				if fold_exists:
 					frappe.throw(_("There can be only one Fold in a form"))
 				fold_exists = True
-				if i < len(fields)-2:
+				if i < len(fields)-1:
 					nxt = fields[i+1]
-					if nxt.fieldtype != "Section Break" \
-						or (nxt.fieldtype=="Section Break" and not nxt.label):
-						frappe.throw(_("Fold must come before a labelled Section Break"))
+					if nxt.fieldtype != "Section Break":
+						frappe.throw(_("Fold must come before a Section Break"))
 				else:
 					frappe.throw(_("Fold can not be at the end of the form"))
 
@@ -291,11 +314,14 @@ def validate_fields(meta):
 			if fieldname not in fieldname_list:
 				frappe.throw(_("Search Fields should contain valid fieldnames"))
 
+
+
 	fields = meta.get("fields")
 	for d in fields:
 		if not d.permlevel: d.permlevel = 0
 		if not d.fieldname:
 			frappe.throw(_("Fieldname is required in row {0}").format(d.idx))
+		d.fieldname = d.fieldname.lower()
 		check_illegal_characters(d.fieldname)
 		check_unique_fieldname(d.fieldname)
 		check_illegal_mandatory(d)
@@ -304,6 +330,7 @@ def validate_fields(meta):
 		check_hidden_and_mandatory(d)
 		check_in_list_view(d)
 		check_illegal_default(d)
+		check_unique_and_text(d)
 
 	check_fold(fields)
 	check_search_fields(meta)
@@ -342,14 +369,21 @@ def validate_permissions(doctype, for_remove=False):
 
 	def check_double(d):
 		has_similar = False
+		similar_because_of = ""
 		for p in permissions:
-			if (p.role==d.role and p.permlevel==d.permlevel
-				and p.apply_user_permissions==d.apply_user_permissions and p!=d):
-				has_similar = True
-				break
+			if p.role==d.role and p.permlevel==d.permlevel and p!=d:
+				if p.apply_user_permissions==d.apply_user_permissions:
+					has_similar = True
+					similar_because_of = _("Apply User Permissions")
+					break
+				elif p.if_owner==d.if_owner:
+					similar_because_of = _("If Owner")
+					has_similar = True
+					break
 
 		if has_similar:
-			frappe.throw(_("{0}: Only one rule allowed with the same Role, Level and Apply User Permissions").format(get_txt(d)))
+			frappe.throw(_("{0}: Only one rule allowed with the same Role, Level and {1}")\
+				.format(get_txt(d),	similar_because_of))
 
 	def check_level_zero_is_set(d):
 		if cint(d.permlevel) > 0 and d.role != 'All':
@@ -362,8 +396,8 @@ def validate_permissions(doctype, for_remove=False):
 			if not has_zero_perm:
 				frappe.throw(_("{0}: Permission at level 0 must be set before higher levels are set").format(get_txt(d)))
 
-			if d.create or d.submit or d.cancel or d.amend or d.match:
-				frappe.throw(_("{0}: Create, Submit, Cancel and Amend only valid at level 0").format(get_txt(d)))
+			for invalid in ("create", "submit", "cancel", "amend"):
+				if d.get(invalid): d.set(invalid, 0)
 
 	def check_permission_dependency(d):
 		if d.cancel and not d.submit:
@@ -421,7 +455,7 @@ def make_module_and_roles(doc, perm_fieldname="permissions"):
 		if not frappe.db.exists("Module Def", doc.module):
 			m = frappe.get_doc({"doctype": "Module Def", "module_name": doc.module})
 			m.app_name = frappe.local.module_app[frappe.scrub(doc.module)]
-			m.ignore_mandatory = m.ignore_permissions = True
+			m.flags.ignore_mandatory = m.flags.ignore_permissions = True
 			m.insert()
 
 		default_roles = ["Administrator", "Guest", "All"]
@@ -431,7 +465,7 @@ def make_module_and_roles(doc, perm_fieldname="permissions"):
 			if not frappe.db.exists("Role", role):
 				r = frappe.get_doc({"doctype": "Role", "role_name": role})
 				r.role_name = role
-				r.ignore_mandatory = r.ignore_permissions = True
+				r.flags.ignore_mandatory = r.flags.ignore_permissions = True
 				r.insert()
 	except frappe.DoesNotExistError, e:
 		pass
@@ -446,4 +480,3 @@ def init_list(doctype):
 	doc = frappe.get_meta(doctype)
 	make_boilerplate("controller_list.js", doc)
 	make_boilerplate("controller_list.html", doc)
-

@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: See license.txt
 
 from __future__ import unicode_literals
@@ -26,7 +26,7 @@ def get_permission_query_conditions(user):
 		return ""
 
 	user_permissions = frappe.defaults.get_user_permissions(user)
-	can_read = frappe.get_user(user).get_can_read()
+	can_read = frappe.get_user().get_can_read()
 
 	can_read_doctypes = ['"{}"'.format(doctype) for doctype in
 		list(set(can_read) - set(user_permissions.keys()))]
@@ -56,7 +56,7 @@ def update_feed(doc, method=None):
 	if frappe.flags.in_patch or frappe.flags.in_install or frappe.flags.in_import:
 		return
 
-	if doc.doctype == "Feed":
+	if doc.doctype == "Feed" or doc.meta.issingle:
 		return
 
 	if hasattr(doc, "get_feed"):

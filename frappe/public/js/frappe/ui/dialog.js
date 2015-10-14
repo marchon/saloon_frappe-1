@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.provide('frappe.ui');
@@ -48,24 +48,34 @@ frappe.ui.Dialog = frappe.ui.FieldGroup.extend({
 				me.display = true;
 				cur_dialog = me;
 				frappe.ui.open_dialogs.push(me);
-				var first = $(me.body).find('.modal-content :input:first');
-				if(first.length && first.attr("data-fieldtype")!="Date") {
-					try {
-						first.get(0).focus();
-					} catch(e) {
-						console.log("Dialog: unable to focus on first input: " + e);
-					}
-				}
-				me.onshow && me.onshow();
-			})
+				me.focus_on_first_input();
+				me.on_page_show && me.on_page_show();
+			});
 
-
+	},
+	focus_on_first_input: function() {
+		var first = $(this.body).find(':input:first');
+		if(first.length && first.attr("data-fieldtype")!="Date") {
+			try {
+				first.get(0).focus();
+			} catch(e) {
+				console.log("Dialog: unable to focus on first input: " + e);
+			}
+		}
 	},
 	get_primary_btn: function() {
-		return this.$wrapper.find(".modal-header .btn-primary").removeClass("hide");
+		return this.$wrapper.find(".modal-header .btn-primary");
 	},
 	set_primary_action: function(label, click) {
-		return this.get_primary_btn().html(label).click(click);
+		this.has_primary_action = true;
+		var me = this;
+		return this.get_primary_btn()
+			.removeClass("hide")
+			.html(label)
+			.click(function() {
+				me.primary_action_fulfilled = true;
+				click();
+			});
 	},
 	make_head: function() {
 		var me = this;
@@ -77,18 +87,25 @@ frappe.ui.Dialog = frappe.ui.FieldGroup.extend({
 	show: function() {
 		// show it
 		this.$wrapper.modal("show");
+		this.primary_action_fulfilled = false;
 	},
 	hide: function(from_event) {
 		this.$wrapper.modal("hide");
 	},
+	get_close_btn: function() {
+		return this.$wrapper.find(".btn-modal-close");
+	},
 	no_cancel: function() {
-		this.$wrapper.find('.close').toggle(false);
+		this.get_close_btn().toggle(false);
+	},
+	cancel: function() {
+		this.get_close_btn().trigger("click");
 	}
 });
 
 // close open dialogs on ESC
 $(document).bind('keydown', function(e) {
 	if(cur_dialog && !cur_dialog.no_cancel_flag && e.which==27) {
-		cur_dialog.hide();
+		cur_dialog.cancel();
 	}
 });

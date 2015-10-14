@@ -5,7 +5,6 @@ body[data-route="desktop"] .navbar-default {
 }
 #page-desktop {
   min-width: 100%;
-  padding-top: calc(55px);
   margin-top: 0px;
   border: 0px;
   position: absolute;
@@ -29,7 +28,7 @@ body[data-route="desktop"] .navbar-default {
   margin-top: 10px;
   transition: 0.2s;
   -webkit-transition: 0.2s;
-  text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.5);
+  text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.5), 0px 1px 5px rgba(0, 0, 0, 0.5);
 }
 .app-icon {
   padding: 20px;
@@ -47,12 +46,12 @@ body[data-route="desktop"] .navbar-default {
   display: inline-block;
   transition: 0.2s;
   -webkit-transition: 0.2s;
+  text-shadow: -1px 1px 5px rgba(0, 0, 0, 0.15);
 }
 .app-icon svg,
 .app-icon img {
   height: 32px;
   width: 32px;
-  margin-top: -3px;
 }
 .app-icon path {
   fill: #fafbfc;
@@ -70,8 +69,10 @@ body[data-route="desktop"] .navbar-default {
   line-height: 1;
   border-radius: 25px;
   min-width: 25px;
+  height: 25px;
   text-align: center;
   text-shadow: none;
+  letter-spacing: normal;
 }
 .app-icon:hover path {
   fill: #ffffff;
@@ -149,4 +150,26 @@ body[data-route="desktop"] .navbar-default {
     width: 70px;
     height: 90px;
   }
+}
+.all-applications-dialog .desktop-app-search {
+  margin-bottom: 15px;
+}
+.all-applications-dialog hr {
+  margin: 10px -15px;
+}
+.all-applications-dialog .checkbox {
+  margin-top: 3px;
+  margin-bottom: 3px;
+}
+.desktop-list-item {
+  padding: 10px 15px;
+  border-bottom: 1px solid #d1d8dd;
+  cursor: pointer;
+}
+.desktop-list-item:hover,
+.desktop-list-item:focus {
+  background-color: #f7fafc;
+}
+.desktop-list-item h4 {
+  display: inline-block;
 }

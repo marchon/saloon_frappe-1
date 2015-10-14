@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 # metadata
@@ -11,12 +11,13 @@ from frappe.model.workflow import get_workflow_name
 from frappe.utils import get_html_format
 from frappe.translate import make_dict_from_messages, extract_messages_from_code
 from frappe.utils.jinja import render_include
+from frappe.build import html_to_js_template
 
 ######
 
 def get_meta(doctype, cached=True):
-	if cached:
-		meta = frappe.cache().get_value("form_meta:" + doctype, lambda: FormMeta(doctype))
+	if cached and not frappe.conf.developer_mode:
+		meta = frappe.cache().hget("form_meta", doctype, lambda: FormMeta(doctype))
 	else:
 		meta = FormMeta(doctype)
 
@@ -32,6 +33,7 @@ class FormMeta(Meta):
 
 	def load_assets(self):
 		self.add_search_fields()
+		self.add_linked_document_type()
 
 		if not self.istable:
 			self.add_linked_with()
@@ -48,7 +50,7 @@ class FormMeta(Meta):
 			d[k] = self.get(k)
 
 		for i, df in enumerate(d.get("fields")):
-			for k in ("link_doctype", "search_fields"):
+			for k in ("search_fields", "is_custom_field", "linked_document_type"):
 				df[k] = self.get("fields")[i].get(k)
 
 		return d
@@ -68,12 +70,26 @@ class FormMeta(Meta):
 			self.set("__listview_template", get_html_format(listview_template))
 
 		self.add_code_via_hook("doctype_js", "__js")
+		self.add_code_via_hook("doctype_list_js", "__list_js")
 		self.add_custom_script()
+		self.add_html_templates(path)
 
 	def _add_code(self, path, fieldname):
 		js = frappe.read_file(path)
 		if js:
 			self.set(fieldname, (self.get(fieldname) or "") + "\n\n" + render_include(js))
+
+	def add_html_templates(self, path):
+		if self.custom:
+			return
+		js = ""
+		for fname in os.listdir(path):
+			if fname.endswith(".html"):
+				with open(os.path.join(path, fname), 'r') as f:
+					template = unicode(f.read(), "utf-8")
+					js += html_to_js_template(fname, template)
+
+		self.set("__js", (self.get("__js") or "") + js)
 
 	def add_code_via_hook(self, hook, fieldname):
 		for app_name in frappe.get_installed_apps():
@@ -105,8 +121,24 @@ class FormMeta(Meta):
 				if search_fields:
 					df.search_fields = map(lambda sf: sf.strip(), search_fields.split(","))
 
+	def add_linked_document_type(self):
+		for df in self.get("fields", {"fieldtype": "Link"}):
+			if df.options:
+				try:
+					df.linked_document_type = frappe.get_meta(df.options).document_type
+				except frappe.DoesNotExistError:
+					# edge case where options="[Select]"
+					pass
+
 	def add_linked_with(self):
-		"""add list of doctypes this doctype is 'linked' with"""
+		"""add list of doctypes this doctype is 'linked' with.
+
+		Example, for Customer:
+
+			{"Address": {"fieldname": "customer"}..}
+		"""
+
+		# find fields where this doctype is linked
 		links = frappe.db.sql("""select parent, fieldname from tabDocField
 			where (fieldtype="Link" and options=%s)
 			or (fieldtype="Select" and options=%s)""", (self.name, "link:"+ self.name))
@@ -122,15 +154,17 @@ class FormMeta(Meta):
 			ret[dt] = { "fieldname": links[dt] }
 
 		if links:
-			for grand_parent, options in frappe.db.sql("""select parent, options from tabDocField
+			# find out if linked in a child table
+			for parent, options in frappe.db.sql("""select parent, options from tabDocField
 				where fieldtype="Table"
 					and options in (select name from tabDocType
 						where istable=1 and name in (%s))""" % ", ".join(["%s"] * len(links)) ,tuple(links)):
 
-				ret[grand_parent] = {"child_doctype": options, "fieldname": links[options] }
+				ret[parent] = {"child_doctype": options, "fieldname": links[options] }
 				if options in ret:
 					del ret[options]
 
+		# find links of parents
 		links = frappe.db.sql("""select dt from `tabCustom Field`
 			where (fieldtype="Table" and options=%s)""", (self.name))
 		links += frappe.db.sql("""select parent from tabDocField

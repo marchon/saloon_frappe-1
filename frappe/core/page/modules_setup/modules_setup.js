@@ -1,12 +1,12 @@
 
-frappe.pages['modules_setup'].onload = function(wrapper) {
+frappe.pages['modules_setup'].on_page_load = function(wrapper) {
 	var page = frappe.ui.make_app_page({
 		parent: wrapper,
 		title: __('Show or Hide Modules'),
 		single_column: true
 	});
 
-	frappe.add_breadcrumbs("Setup");
+	frappe.breadcrumbs.add("Setup");
 
 	wrapper.page.set_primary_action(__("Update"), function() {
 		frappe.modules_setup.update(this);

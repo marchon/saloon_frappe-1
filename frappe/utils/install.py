@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -39,6 +39,9 @@ def after_install():
 		{'doctype': "Email Account", "email_id": "replies@example.com", "default_incoming": 1}
 	]
 
+	from frappe.core.doctype.file.file import make_home_folder
+	make_home_folder()
+
 	for d in install_docs:
 		try:
 			frappe.get_doc(d).insert()
@@ -46,6 +49,10 @@ def after_install():
 			pass
 
 	import_country_and_currency()
+
+	# save default print setting
+	print_settings = frappe.get_doc("Print Settings")
+	print_settings.save()
 
 	# all roles to admin
 	frappe.get_doc("User", "Administrator").add_roles(*frappe.db.sql_list("""select name from tabRole"""))
@@ -80,14 +87,16 @@ def before_tests():
 
 def import_country_and_currency():
 	from frappe.geo.country_info import get_all
-	print "Importing Geo..."
+	from frappe.utils import update_progress_bar
 
 	data = get_all()
 
-
-	for name in data:
+	for i, name in enumerate(data):
+		update_progress_bar("Updating country info", i, len(data))
 		country = frappe._dict(data[name])
 		add_country_and_currency(name, country)
+
+	print
 
 	# enable frequently used currencies
 	for currency in ("INR", "USD", "GBP", "EUR", "AED", "AUD", "JPY", "CNY", "CHF"):
@@ -100,8 +109,9 @@ def add_country_and_currency(name, country):
 			"country_name": name,
 			"code": country.code,
 			"date_format": country.date_format or "dd-mm-yyyy",
-			"time_zones": "\n".join(country.timezones or [])
-		}).insert()
+			"time_zones": "\n".join(country.timezones or []),
+			"docstatus": 0
+		}).db_insert()
 
 	if country.currency and not frappe.db.exists("Currency", country.currency):
 		frappe.get_doc({
@@ -110,6 +120,7 @@ def add_country_and_currency(name, country):
 			"fraction": country.currency_fraction,
 			"symbol": country.currency_symbol,
 			"fraction_units": country.currency_fraction_units,
-			"number_format": country.number_format
-		}).insert()
+			"number_format": country.number_format,
+			"docstatus": 0
+		}).db_insert()
 

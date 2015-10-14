@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from frappe import _
 from frappe.desk.moduleview import add_setup_section
 
@@ -44,6 +45,13 @@ def get_data():
 					"icon": "icon-eye-open",
 					"name": "Permitted Documents For User",
 					"description": _("Check which Documents are readable by a User")
+				},
+				{
+					"type": "report",
+					"doctype": "DocShare",
+					"icon": "icon-share",
+					"name": "Document Share Report",
+					"description": _("Report of all document shares")
 				}
 			]
 		},
@@ -92,30 +100,9 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "File Data",
+					"name": "File",
 					"description": _("Manage uploaded files.")
 				}
-			]
-		},
-		{
-			"label": _("Workflow"),
-			"icon": "icon-random",
-			"items": [
-				{
-					"type": "doctype",
-					"name": "Workflow",
-					"description": _("Define workflows for forms.")
-				},
-				{
-					"type": "doctype",
-					"name": "Workflow State",
-					"description": _("States for workflow (e.g. Draft, Approved, Cancelled).")
-				},
-				{
-					"type": "doctype",
-					"name": "Workflow Action",
-					"description": _("Actions for workflow (e.g. Approve, Cancel).")
-				},
 			]
 		},
 		{
@@ -144,6 +131,12 @@ def get_data():
 			"icon": "icon-print",
 			"items": [
 				{
+					"type": "page",
+					"label": "Print Format Builder",
+					"name": "print-format-builder",
+					"description": _("Drag and Drop tool to build and customize Print Formats.")
+				},
+				{
 					"type": "doctype",
 					"name": "Print Settings",
 					"description": _("Set default format, page size, print style etc.")
@@ -151,7 +144,28 @@ def get_data():
 				{
 					"type": "doctype",
 					"name": "Print Format",
-					"description": _("Customized HTML Templates for printing transctions.")
+					"description": _("Customized HTML Templates for printing transactions.")
+				},
+			]
+		},
+		{
+			"label": _("Workflow"),
+			"icon": "icon-random",
+			"items": [
+				{
+					"type": "doctype",
+					"name": "Workflow",
+					"description": _("Define workflows for forms.")
+				},
+				{
+					"type": "doctype",
+					"name": "Workflow State",
+					"description": _("States for workflow (e.g. Draft, Approved, Cancelled).")
+				},
+				{
+					"type": "doctype",
+					"name": "Workflow Action",
+					"description": _("Actions for workflow (e.g. Approve, Cancel).")
 				},
 			]
 		},
@@ -174,7 +188,13 @@ def get_data():
 					"type": "doctype",
 					"name": "Custom Script",
 					"description": _("Add custom javascript to forms.")
+				},
+				{
+					"type": "doctype",
+					"name": "DocType",
+					"description": _("Add custom forms.")
 				}
+
 			]
 		},
 		{
@@ -190,23 +210,15 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Backup Manager",
-					"label": _("Download Backup"),
-					"onclick": "frappe.ui.toolbar.download_backup",
-					"icon": "icon-download-alt",
-					"description": _("Send download link of a recent backup to System Managers"),
-					"hide_count": True
-				},
-				{
-					"type": "doctype",
-					"name": "Backup Manager",
-					"description": _("Manage cloud backups on Dropbox"),
-					"hide_count": True
-				},
-				{
-					"type": "doctype",
 					"name": "Scheduler Log",
 					"description": _("Log of error on automated events (scheduler).")
+				},
+				{
+					"type": "page",
+					"name": "backups",
+					"label": _("Download Backups"),
+					"description": _("List of backups available for download"),
+					"icon": "icon-download"
 				},
 			]
 		}

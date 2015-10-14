@@ -1,9 +1,10 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
 import frappe, json
 import frappe.utils
+import frappe.share
 import frappe.defaults
 import frappe.desk.form.meta
 from frappe.permissions import get_doc_permissions
@@ -31,7 +32,7 @@ def getdoc(doctype, name, user=None):
 		run_onload(doc)
 
 		if not doc.has_permission("read"):
-			raise frappe.PermissionError, "read"
+			raise frappe.PermissionError, ("read", doctype, name)
 
 		# add file list
 		get_docinfo(doc)
@@ -40,6 +41,9 @@ def getdoc(doctype, name, user=None):
 		frappe.errprint(frappe.utils.get_traceback())
 		frappe.msgprint(_('Did not load'))
 		raise
+
+	if doc and not name.startswith('_'):
+		frappe.get_user().update_recent(doctype, name)
 
 	frappe.response.docs.append(doc)
 
@@ -72,35 +76,44 @@ def get_meta_bundle(doctype):
 			bundle.append(frappe.desk.form.meta.get_meta(df.options, not frappe.conf.developer_mode))
 	return bundle
 
-def get_docinfo(doc):
+@frappe.whitelist()
+def get_docinfo(doc=None, doctype=None, name=None):
+	if not doc:
+		doc = frappe.get_doc(doctype, name)
+		if not doc.has_permission("read"):
+			raise frappe.PermissionError
+
 	frappe.response["docinfo"] = {
 		"attachments": get_attachments(doc.doctype, doc.name),
 		"comments": get_comments(doc.doctype, doc.name),
 		"assignments": get_assignments(doc.doctype, doc.name),
-		"permissions": get_doc_permissions(doc)
+		"permissions": get_doc_permissions(doc),
+		"shared": frappe.share.get_users(doc.doctype, doc.name,
+			fields=["user", "read", "write", "share", "everyone"])
 	}
 
 def get_user_permissions(meta):
 	out = {}
 	all_user_permissions = frappe.defaults.get_user_permissions()
 	for df in meta.get_fields_to_check_permissions(all_user_permissions):
-		out[df.options] = all_user_permissions[df.options]
+		out[df.options] = list(set(all_user_permissions[df.options]))
 	return out
 
 def get_attachments(dt, dn):
-	return frappe.get_all("File Data", fields=["name", "file_name", "file_url"],
+	return frappe.get_all("File", fields=["name", "file_name", "file_url"],
 		filters = {"attached_to_name": dn, "attached_to_doctype": dt})
 
 def get_comments(dt, dn, limit=100):
 	comments = frappe.db.sql("""select name, comment, comment_by, creation,
-		comment_type, "Comment" as doctype from `tabComment`
+			reference_doctype, reference_name, comment_type, "Comment" as doctype
+		from `tabComment`
 		where comment_doctype=%s and comment_docname=%s
 		order by creation desc limit %s""" % ('%s','%s', limit),
 			(dt, dn), as_dict=1)
 
 	communications = frappe.db.sql("""select name,
 			content as comment, sender as comment_by, creation,
-			communication_medium as comment_type, subject,
+			communication_medium as comment_type, subject, delivery_status,
 			"Communication" as doctype
 		from tabCommunication
 		where reference_doctype=%s and reference_name=%s
@@ -108,7 +121,7 @@ def get_comments(dt, dn, limit=100):
 			as_dict=True)
 
 	for c in communications:
-		c.attachments = json.dumps([f.file_url for f in frappe.get_list("File Data",
+		c.attachments = json.dumps([f.file_url for f in frappe.get_all("File",
 			fields=["file_url"],
 			filters={"attached_to_doctype": "Communication",
 				"attached_to_name": c.name}

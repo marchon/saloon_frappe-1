@@ -1,13 +1,15 @@
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
+# MIT License. See license.txt
+
+from __future__ import unicode_literals
 import frappe
 
 def execute():
 	changed = (
-		("desk", ("feed", "event", "event_role", "event_user", "todo",
-			"note", "note_user")),
+		("desk", ("feed", "event", "event_role", "todo", "note")),
 		("custom", ("custom_field", "custom_script", "customize_form",
 			 "customize_form_field", "property_setter")),
-		("email", ("bulk_email", "email_alert", "email_alert_recipient",
-			"standard_reply")),
+		("email", ("bulk_email", "email_alert", "email_alert_recipient", "standard_reply")),
 		("geo", ("country", "currency")),
 		("print", ("letter_head", "print_format", "print_settings"))
 	)

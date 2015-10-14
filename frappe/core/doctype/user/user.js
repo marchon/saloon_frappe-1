@@ -4,6 +4,10 @@ cur_frm.cscript.onload = function(doc, dt, dn) {
 			var role_area = $('<div style="min-height: 300px">')
 				.appendTo(cur_frm.fields_dict.roles_html.wrapper);
 			cur_frm.roles_editor = new frappe.RoleEditor(role_area);
+
+			var module_area = $('<div style="min-height: 300px">')
+				.appendTo(cur_frm.fields_dict.modules_html.wrapper);
+			cur_frm.module_editor = new frappe.ModuleEditor(cur_frm, module_area)
 		} else {
 			cur_frm.roles_editor.show();
 		}
@@ -42,9 +46,7 @@ cur_frm.cscript.refresh = function(doc) {
 		window.location.reload();
 	}
 
-	cur_frm.toggle_display('change_password', !doc.__islocal);
-
-	cur_frm.toggle_display(['sb1', 'sb3'], false);
+	cur_frm.toggle_display(['sb1', 'sb3', 'modules_access'], false);
 
 	if(!doc.__islocal){
 		cur_frm.add_custom_button(__("Set User Permissions"), function() {
@@ -55,11 +57,12 @@ cur_frm.cscript.refresh = function(doc) {
 		}, null, "btn-default")
 
 		if(has_common(user_roles, ["Administrator", "System Manager"])) {
-			cur_frm.toggle_display(['sb1', 'sb3'], true);
+			cur_frm.toggle_display(['sb1', 'sb3', 'modules_access'], true);
 		}
 		cur_frm.cscript.enabled(doc);
 
 		cur_frm.roles_editor && cur_frm.roles_editor.show();
+		cur_frm.module_editor && cur_frm.module_editor.refresh();
 
 		if(user==doc.name) {
 			// update display settings
@@ -72,7 +75,7 @@ cur_frm.cscript.refresh = function(doc) {
 
 cur_frm.cscript.enabled = function(doc) {
 	if(!doc.__islocal && has_common(user_roles, ["Administrator", "System Manager"])) {
-		cur_frm.toggle_display(['sb1', 'sb3'], doc.enabled);
+		cur_frm.toggle_display(['sb1', 'sb3', 'modules_access'], doc.enabled);
 		cur_frm.toggle_enable('*', doc.enabled);
 		cur_frm.set_df_property('enabled', 'read_only', 0);
 	}
@@ -87,6 +90,42 @@ cur_frm.cscript.validate = function(doc) {
 		cur_frm.roles_editor.set_roles_in_table()
 	}
 }
+
+frappe.ModuleEditor = Class.extend({
+	init: function(frm, wrapper) {
+		this.wrapper = $('<div class="row module-block-list"></div>').appendTo(wrapper);
+		this.frm = frm;
+		this.make();
+	},
+	make: function() {
+		var me = this;
+		$.each(keys(frappe.boot.modules), function(i, m) {
+			// TODO: add checkbox
+			$(repl('<div class="col-sm-6"><div class="checkbox">\
+				<label><input type="checkbox" class="block-module-check" data-module="%(module)s">\
+				%(module)s</label></div></div>', {module: m})).appendTo(me.wrapper);
+		});
+		this.bind();
+	},
+	refresh: function() {
+		var me = this;
+		this.wrapper.find(".block-module-check").prop("checked", true);
+		$.each(this.frm.doc.block_modules, function(i, d) {
+			me.wrapper.find(".block-module-check[data-module='"+ d.module +"']").prop("checked", false);
+		});
+	},
+	bind: function() {
+		this.wrapper.on("change", ".block-module-check", function() {
+			var module = $(this).attr('data-module');
+			if($(this).prop("checked")) {
+				// remove from block_modules
+				me.frm.doc.block_modules = $.map(me.frm.doc.block_modules || [], function(d) { d.module != module });
+			} else {
+				me.frm.add_child("block_modules", {"module": module});
+			}
+		});
+	}
+})
 
 frappe.RoleEditor = Class.extend({
 	init: function(wrapper) {
@@ -110,8 +149,8 @@ frappe.RoleEditor = Class.extend({
 	show_roles: function() {
 		var me = this;
 		$(this.wrapper).empty();
-		var role_toolbar = $('<p><button class="btn btn-default btn-add"></button>\
-			<button class="btn btn-default btn-remove"></button></p>').appendTo($(this.wrapper));
+		var role_toolbar = $('<p><button class="btn btn-default btn-add btn-sm" style="margin-right: 5px;"></button>\
+			<button class="btn btn-sm btn-default btn-remove"></button></p>').appendTo($(this.wrapper));
 
 		role_toolbar.find(".btn-add")
 			.html(__('Add all roles'))

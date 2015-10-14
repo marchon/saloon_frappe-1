@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -7,7 +7,6 @@ import frappe, os
 from frappe.model.document import Document
 
 class ModuleDef(Document):
-	__doclink__ = "https://frappe.io/docs/models/core/module_def"
 	def on_update(self):
 		"""If in `developer_mode`, create folder for module and
 			add in `modules.txt` of app if missing."""
@@ -39,7 +38,3 @@ class ModuleDef(Document):
 
 				frappe.clear_cache()
 				frappe.setup_module_map()
-
-
-
-

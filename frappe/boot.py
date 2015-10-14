@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -9,7 +9,9 @@ bootstrap client session
 import frappe
 import frappe.defaults
 import frappe.desk.desk_page
-from frappe.utils import get_gravatar
+from frappe.utils import get_gravatar, get_url
+from frappe.desk.form.load import get_meta_bundle
+from frappe.utils.change_log import get_versions
 
 def get_bootinfo():
 	"""build and return boot info"""
@@ -45,11 +47,13 @@ def get_bootinfo():
 		tabDocType where ifnull(icon,'')!=''"""))
 	bootinfo.single_types = frappe.db.sql_list("""select name from tabDocType where ifnull(issingle,0)=1""")
 	add_home_page(bootinfo, doclist)
-	add_allowed_pages(bootinfo)
+	bootinfo.page_info = get_allowed_pages()
 	load_translations(bootinfo)
 	add_timezone_info(bootinfo)
 	load_conf_settings(bootinfo)
 	load_print(bootinfo, doclist)
+	doclist.extend(get_meta_bundle("Page"))
+	bootinfo.home_folder = frappe.db.get_value("File", {"is_home_folder": 1})
 
 	# ipinfo
 	if frappe.session['data'].get('ipinfo'):
@@ -63,19 +67,23 @@ def get_bootinfo():
 
 	if bootinfo.lang:
 		bootinfo.lang = unicode(bootinfo.lang)
+	bootinfo['versions'] = {k: v['version'] for k, v in get_versions().items()}
 
 	bootinfo.error_report_email = frappe.get_hooks("error_report_email")
+	bootinfo.calendars = sorted(frappe.get_hooks("calendars"))
 
 	return bootinfo
 
 def load_conf_settings(bootinfo):
 	from frappe import conf
+	bootinfo.max_file_size = conf.get('max_file_size') or 5242880
 	for key in ['developer_mode']:
 		if key in conf: bootinfo[key] = conf.get(key)
 
-def add_allowed_pages(bootinfo):
+def get_allowed_pages():
 	roles = frappe.get_roles()
-	bootinfo.page_info = {}
+	page_info = {}
+
 	for p in frappe.db.sql("""select distinct
 		tabPage.name, tabPage.modified, tabPage.title
 		from `tabPage Role`, `tabPage`
@@ -83,7 +91,7 @@ def add_allowed_pages(bootinfo):
 			and `tabPage Role`.parent = `tabPage`.name""" % ', '.join(['%s']*len(roles)),
 				roles, as_dict=True):
 
-		bootinfo.page_info[p.name] = {"modified":p.modified, "title":p.title}
+		page_info[p.name] = {"modified":p.modified, "title":p.title}
 
 	# pages where role is not set are also allowed
 	for p in frappe.db.sql("""select name, modified, title
@@ -91,12 +99,21 @@ def add_allowed_pages(bootinfo):
 			(select count(*) from `tabPage Role`
 				where `tabPage Role`.parent=tabPage.name) = 0""", as_dict=1):
 
-		bootinfo.page_info[p.name] = {"modified":p.modified, "title":p.title}
+		page_info[p.name] = {"modified":p.modified, "title":p.title}
+
+	return page_info
 
 def load_translations(bootinfo):
 	if frappe.local.lang != 'en':
-		bootinfo["__messages"] = frappe.get_lang_dict("boot")
+		messages = frappe.get_lang_dict("boot")
+
 		bootinfo["lang"] = frappe.lang
+
+		# load translated report names
+		for name in bootinfo.user.all_reports:
+			messages[name] = frappe._(name)
+
+		bootinfo["__messages"] = messages
 
 def get_fullnames():
 	"""map of user fullnames"""
@@ -114,15 +131,9 @@ def get_fullnames():
 
 	return d
 
-def get_startup_js():
-	startup_js = []
-	for method in frappe.get_hooks().startup_js or []:
-		startup_js.append(frappe.get_attr(method)() or "")
-	return "\n".join(startup_js)
-
 def get_user(bootinfo):
 	"""get user info"""
-	bootinfo.user = frappe.user.load_user()
+	bootinfo.user = frappe.get_user().load_user()
 
 def add_home_page(bootinfo, docs):
 	"""load home page"""
@@ -139,14 +150,10 @@ def add_home_page(bootinfo, docs):
 	docs.append(page)
 
 def add_timezone_info(bootinfo):
-	user = bootinfo.user.get("time_zone")
 	system = bootinfo.sysdefaults.get("time_zone")
-	if user and user != system:
-		import frappe.utils.momentjs
-		bootinfo.timezone_info = {"zones":{}, "rules":{}, "links":{}}
-
-		frappe.utils.momentjs.update(user, bootinfo.timezone_info)
-		frappe.utils.momentjs.update(system, bootinfo.timezone_info)
+	import frappe.utils.momentjs
+	bootinfo.timezone_info = {"zones":{}, "rules":{}, "links":{}}
+	frappe.utils.momentjs.update(system, bootinfo.timezone_info)
 
 def load_print(bootinfo, doclist):
 	print_settings = frappe.db.get_singles_dict("Print Settings")
@@ -155,4 +162,4 @@ def load_print(bootinfo, doclist):
 	load_print_css(bootinfo, print_settings)
 
 def load_print_css(bootinfo, print_settings):
-	bootinfo.print_css = frappe.get_attr("frappe.templates.pages.print.get_print_style")(print_settings.print_style or "Modern")
+	bootinfo.print_css = frappe.get_attr("frappe.templates.pages.print.get_print_style")(print_settings.print_style or "Modern", for_legacy=True)

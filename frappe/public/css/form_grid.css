@@ -1,6 +1,5 @@
 .form-grid {
   border: 1px solid #d1d8dd;
-  margin-bottom: 15px;
   border-radius: 3px;
 }
 .grid-heading-row {
@@ -9,10 +8,10 @@
   font-weight: bold;
 }
 .grid-row {
-  padding: 10px 15px;
   border-bottom: 1px solid #d1d8dd;
-  transition: 0.2s;
   -webkit-transition: 0.2s;
+  -o-transition: 0.2s;
+  transition: 0.2s;
 }
 .grid-row:last-child {
   border: none;
@@ -28,12 +27,11 @@
 .grid-body {
   background-color: #fff;
 }
+.form-grid .data-row {
+  padding: 10px 15px;
+}
 .grid-body .data-row {
   font-size: 12px;
-}
-.grid-footer {
-  padding: 10px 15px;
-  border-top: 1px solid #d1d8dd;
 }
 .grid-empty,
 .list-loading {
@@ -59,16 +57,39 @@
 .grid-row p {
   margin-bottom: 5px;
 }
+.grid-row .col-sm-6 .editor-toolbar-text-group,
+.grid-row .col-sm-6 .editor-toolbar-align-group {
+  display: none;
+}
+.grid-row .col-sm-6 .text-editor {
+  height: 200px;
+}
+.grid-row .col-sm-6 .markdown-text-editor {
+  height: 251px;
+}
 .form-in-grid {
-  margin: -10px -15px;
+  background-color: white;
   z-index: 1021;
   position: relative;
-  background-color: white;
+  overflow: hidden;
+  height: 0;
+  opacity: 0;
+  -webkit-transition: opacity 0.2s ease;
+  -o-transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease;
+}
+.grid-row-open .form-in-grid {
+  opacity: 1;
+  height: auto;
+  overflow: visible;
 }
 .grid-form-heading {
   padding: 10px 15px;
   font-size: 120%;
   border-bottom: 1px solid #d1d8dd;
+}
+.grid-footer {
+  background-color: #fff;
 }
 .grid-footer-toolbar {
   padding: 10px 15px;
@@ -84,4 +105,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-right: 0px;
+}
+.grid-label {
+  margin-right: 8px;
+  margin-bottom: 4px;
 }

@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: See license.txt
 
 from __future__ import unicode_literals
@@ -9,4 +9,5 @@ from frappe.model.document import Document
 
 class Currency(Document):
 	def validate(self):
-		frappe.clear_cache()
+		if not frappe.flags.in_install_app:
+			frappe.clear_cache()

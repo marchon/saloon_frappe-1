@@ -310,12 +310,13 @@
  },
  "Bosnia and Herzegovina": {
   "code": "ba",
+  "currency": "BAM",
   "currency_fraction": "Fening",
   "currency_fraction_units": 100,
-  "currency_symbol": "KM or \u041a\u041c",
-  "number_format": "#,###.##",
+  "currency_symbol": "KM",
+  "number_format": "#.###,##",
   "timezones": [
-   "Europe/Belgrade"
+   "Europe/Sarajevo"
   ]
  },
  "Botswana": {
@@ -591,6 +592,7 @@
   "number_format": "#,###.##"
  },
  "Congo, The Democratic Republic of the": {
+  "code": "cd",
   "number_format": "#,###.##"
  },
  "Cook Islands": {
@@ -624,7 +626,7 @@
   "currency_symbol": "kn",
   "number_format": "#.###,##",
   "timezones": [
-   "Europe/Belgrade"
+   "Europe/Zagreb"
   ]
  },
  "Cuba": {
@@ -910,6 +912,7 @@
  },
  "Ghana": {
   "code": "gh",
+  "currency": "GHS",
   "currency_fraction": "Pesewa",
   "currency_fraction_units": 100,
   "currency_symbol": "\u20b5",
@@ -1191,6 +1194,7 @@
   ]
  },
  "Ivory Coast": {
+  "code": "ci",
   "currency_fraction": "Centime",
   "currency_fraction_units": 100,
   "currency_symbol": "Fr",
@@ -1283,6 +1287,7 @@
   ]
  },
  "Korea, Democratic Peoples Republic of": {
+  "code": "kp",
   "currency": "KPW",
   "currency_name": "North Korean Won",
   "number_format": "#,###.##"
@@ -1318,6 +1323,7 @@
   ]
  },
  "Lao Peoples Democratic Republic": {
+  "code": "la",
   "currency": "LAK",
   "currency_name": "Kip",
   "number_format": "#,###.##"
@@ -1423,6 +1429,7 @@
   "number_format": "#,###.##"
  },
  "Macedonia, Republic of": {
+  "code": "mk",
   "currency": "MKD",
   "currency_fraction": "Deni",
   "currency_fraction_units": 100,
@@ -1833,6 +1840,7 @@
   ]
  },
  "Palestinian Territory, Occupied": {
+  "code": "ps",
   "number_format": "#,###.##"
  },
  "Panama": {

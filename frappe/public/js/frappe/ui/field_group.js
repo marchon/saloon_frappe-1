@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 frappe.provide('frappe.ui');
@@ -19,11 +19,10 @@ frappe.ui.FieldGroup = frappe.ui.form.Layout.extend({
 			this.refresh();
 			// set default
 			$.each(this.fields_list, function(i, f) {
-				if(f.df["default"]) f.set_input(f.df["default"]);
+				if(f.df["default"])
+					f.set_input(f.df["default"]);
 			})
 			if(!this.no_submit_on_enter) {
-				$(this.body).find("[data-fieldtype='Button']").filter(":first")
-					.removeClass("btn-default").addClass("btn-primary");
 				this.catch_enter_as_submit();
 			}
 		}
@@ -33,8 +32,10 @@ frappe.ui.FieldGroup = frappe.ui.form.Layout.extend({
 		var me = this;
 		$(this.body).find('input[type="text"], input[type="password"]').keypress(function(e) {
 			if(e.which==13) {
-				e.preventDefault();
-				$(me.body).find('.btn-primary:first').click();
+				if(me.has_primary_action) {
+					e.preventDefault();
+					me.get_primary_btn().trigger("click");
+				}
 			}
 		});
 	},
@@ -53,17 +54,15 @@ frappe.ui.FieldGroup = frappe.ui.form.Layout.extend({
 			if(f.get_parsed_value) {
 				var v = f.get_parsed_value();
 
-				if(f.df.reqd && !v)
-					errors.push('- ' + __(f.df.label) + "<br>");
+				if(f.df.reqd && is_null(v))
+					errors.push(__(f.df.label));
 
 				if(v) ret[f.df.fieldname] = v;
 			}
 		}
 		if(errors.length) {
-			msgprint($.format('<i class="icon-warning-sign"></i>\
-						<b>{0}</b>:\
-						<br/><br/>\
-						{1}', [__('Missing Values Required'), errors.join('\n')]));
+			msgprint('<b>' + __('Missing Values Required') + "</b><br>"
+				+ errors.join('<br>'));
 			return null;
 		}
 		return ret;
@@ -77,6 +76,9 @@ frappe.ui.FieldGroup = frappe.ui.form.Layout.extend({
 		if(f) {
 			f.set_input(val);
 		}
+	},
+	set_input: function(key, val) {
+		return this.set_value(key, val);
 	},
 	set_values: function(dict) {
 		for(var key in dict) {

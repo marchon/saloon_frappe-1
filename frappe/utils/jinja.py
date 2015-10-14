@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 from __future__ import unicode_literals
 
@@ -22,15 +22,21 @@ def get_jenv():
 def get_template(path):
 	return get_jenv().get_template(path)
 
-def render_template(template, context):
-	return get_jenv().from_string(template).render(context)
+def render_template(template, context, is_path=None):
+	if is_path or template.startswith("templates/"):
+		return get_jenv().get_template(template).render(context)
+	else:
+		return get_jenv().from_string(template).render(context)
 
 def get_allowed_functions_for_jenv():
 	import frappe
 	import frappe.utils
 	import frappe.utils.data
-	from frappe.utils.autodoc import automodule, get_doclink, get_version
+	from frappe.utils.autodoc import automodule, get_version
 	from frappe.model.document import get_controller
+	from frappe.website.utils import get_shade
+	from frappe.modules import scrub
+	import mimetypes
 
 	datautils = {}
 	for key, obj in frappe.utils.data.__dict__.items():
@@ -63,51 +69,61 @@ def get_allowed_functions_for_jenv():
 			"get_list": frappe.get_list,
 			"get_all": frappe.get_all,
 			"utils": datautils,
-			"user": hasattr(frappe.local, "session") and frappe.local.session.user or "Guest",
+			"user": getattr(frappe.local, "session", None) and frappe.local.session.user or "Guest",
 			"date_format": frappe.db.get_default("date_format") or "yyyy-mm-dd",
 			"get_fullname": frappe.utils.get_fullname,
 			"get_gravatar": frappe.utils.get_gravatar,
-			"full_name": hasattr(frappe.local, "session") and frappe.local.session.data.full_name or "Guest"
+			"full_name": getattr(frappe.local, "session", None) and frappe.local.session.data.full_name or "Guest",
+			"render_template": frappe.render_template
 		},
 		"autodoc": {
 			"get_version": get_version,
-			"get_doclink": get_doclink,
 			"automodule": automodule,
 			"get_controller": get_controller
 		},
 		"get_visible_columns": \
 			frappe.get_attr("frappe.templates.pages.print.get_visible_columns"),
-		"_": frappe._
+		"_": frappe._,
+		"get_shade": get_shade,
+		"scrub": scrub,
+		"guess_mimetype": mimetypes.guess_type
 	}
 
 def get_jloader():
 	import frappe
 	if not frappe.local.jloader:
-		from jinja2 import ChoiceLoader, PackageLoader
+		from jinja2 import ChoiceLoader, PackageLoader, PrefixLoader
 
-		apps = frappe.get_installed_apps()
-		apps.remove("frappe")
+		apps = frappe.get_installed_apps(sort=True)
+		apps.reverse()
 
-		frappe.local.jloader = ChoiceLoader([PackageLoader(app, ".") \
-				for app in apps + ["frappe"]])
+		frappe.local.jloader = ChoiceLoader(
+			# search for something like app/templates/...
+			[PrefixLoader(dict(
+				(app, PackageLoader(app, ".")) for app in apps
+			))]
+
+			# search for something like templates/...
+			+ [PackageLoader(app, ".") for app in apps]
+		)
 
 	return frappe.local.jloader
 
 def set_filters(jenv):
 	import frappe
 	from frappe.utils import global_date_format, cint, cstr, flt
-	from frappe.website.utils import get_hex_shade
+	from frappe.website.utils import get_shade, abs_url
 	from markdown2 import markdown
-	from json import dumps
 
 	jenv.filters["global_date_format"] = global_date_format
 	jenv.filters["markdown"] = markdown
-	jenv.filters["json"] = dumps
-	jenv.filters["get_hex_shade"] = get_hex_shade
+	jenv.filters["json"] = frappe.as_json
+	jenv.filters["get_shade"] = get_shade
 	jenv.filters["len"] = len
 	jenv.filters["int"] = cint
 	jenv.filters["str"] = cstr
 	jenv.filters["flt"] = flt
+	jenv.filters["abs_url"] = abs_url
 
 	# load jenv_filters from hooks.py
 	for app in frappe.get_installed_apps():

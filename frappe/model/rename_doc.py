@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -25,7 +25,9 @@ def rename_doc(doctype, old, new, force=False, merge=False, ignore_permissions=F
 	old_doc = frappe.get_doc(doctype, old)
 	out = old_doc.run_method("before_rename", old, new, merge) or {}
 	new = (out.get("new") or new) if isinstance(out, dict) else (out or new)
-	new = validate_rename(doctype, new, meta, merge, force, ignore_permissions)
+
+	if doctype != "DocType":
+		new = validate_rename(doctype, new, meta, merge, force, ignore_permissions)
 
 	if not merge:
 		rename_parent_and_child(doctype, old, new, meta)
@@ -64,8 +66,9 @@ def rename_doc(doctype, old, new, force=False, merge=False, ignore_permissions=F
 
 def update_attachments(doctype, old, new):
 	try:
-		frappe.db.sql("""update `tabFile Data` set attached_to_name=%s
-			where attached_to_name=%s and attached_to_doctype=%s""", (new, old, doctype))
+		if old != "File Data" and doctype != "DocType":
+			frappe.db.sql("""update `tabFile` set attached_to_name=%s
+				where attached_to_name=%s and attached_to_doctype=%s""", (new, old, doctype))
 	except Exception, e:
 		if e.args[0]!=1054: # in patch?
 			raise
@@ -76,13 +79,14 @@ def rename_versions(doctype, old, new):
 
 def rename_parent_and_child(doctype, old, new, meta):
 	# rename the doc
-	frappe.db.sql("update `tab%s` set name=%s where name=%s" \
-		% (doctype, '%s', '%s'), (new, old))
-
+	frappe.db.sql("update `tab%s` set name=%s where name=%s" % (doctype, '%s', '%s'),
+		(new, old))
 	update_child_docs(old, new, meta)
 
 def validate_rename(doctype, new, meta, merge, force, ignore_permissions):
-	exists = frappe.db.get_value(doctype, new)
+	# using for update so that it gets locked and someone else cannot edit it while this rename is going on!
+	exists = frappe.db.sql("select name from `tab{doctype}` where name=%s for update".format(doctype=doctype), new)
+	exists = exists[0][0] if exists else None
 
 	if merge and not exists:
 		frappe.msgprint(_("{0} {1} does not exist, select a new target to merge").format(doctype, new), raise_exception=1)
@@ -93,7 +97,7 @@ def validate_rename(doctype, new, meta, merge, force, ignore_permissions):
 	if not (ignore_permissions or frappe.has_permission(doctype, "write")):
 		frappe.msgprint(_("You need write permission to rename"), raise_exception=1)
 
-	if not force and not meta.allow_rename:
+	if not (force or ignore_permissions) and not meta.allow_rename:
 		frappe.msgprint(_("{0} not allowed to be renamed").format(_(doctype)), raise_exception=1)
 
 	# validate naming like it's done in doc.py
@@ -184,8 +188,20 @@ def get_link_fields(doctype):
 	return link_fields
 
 def update_options_for_fieldtype(fieldtype, old, new):
-	frappe.db.sql("""update `tabDocField` set options=%s
-		where fieldtype=%s and options=%s""", (new, fieldtype, old))
+	if frappe.conf.developer_mode:
+		for name in frappe.db.sql_list("""select parent from
+			tabDocField where options=%s""", old):
+			doctype = frappe.get_doc("DocType", name)
+			save = False
+			for f in doctype.fields:
+				if f.options == old:
+					f.options = new
+					save = True
+			if save:
+				doctype.save()
+	else:
+		frappe.db.sql("""update `tabDocField` set options=%s
+			where fieldtype=%s and options=%s""", (new, fieldtype, old))
 
 	frappe.db.sql("""update `tabCustom Field` set options=%s
 		where fieldtype=%s and options=%s""", (new, fieldtype, old))

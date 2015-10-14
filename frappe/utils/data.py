@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -8,36 +8,78 @@ import frappe
 import operator
 import re, urllib, datetime, math
 import babel.dates
+from dateutil import parser
+from num2words import num2words
+
+DATE_FORMAT = "%Y-%m-%d"
+TIME_FORMAT = "%H:%M:%S.%f"
+DATETIME_FORMAT = DATE_FORMAT + " " + TIME_FORMAT
 
 # datetime functions
-def getdate(string_date):
+def getdate(string_date=None):
 	"""
 		 Coverts string date (yyyy-mm-dd) to datetime.date object
 	"""
-	if isinstance(string_date, datetime.date):
-		return string_date
+	if not string_date:
+		return get_datetime().date()
 
-	elif isinstance(string_date, datetime.datetime):
+	if isinstance(string_date, datetime.datetime):
 		return string_date.date()
 
-	if " " in string_date:
-		string_date = string_date.split(" ")[0]
+	elif isinstance(string_date, datetime.date):
+		return string_date
 
-	return datetime.datetime.strptime(string_date, "%Y-%m-%d").date()
+	# dateutil parser does not agree with dates like 0000-00-00
+	if not string_date or string_date=="0000-00-00":
+		return None
+
+	return parser.parse(string_date).date()
+
+def get_datetime(datetime_str=None):
+	if not datetime_str:
+		return now_datetime()
+
+	if isinstance(datetime_str, (datetime.datetime, datetime.timedelta)):
+		return datetime_str
+
+	elif isinstance(datetime_str, (list, tuple)):
+		return datetime.datetime(datetime_str)
+
+	elif isinstance(datetime_str, datetime.date):
+		return datetime.datetime.combine(datetime_str, datetime.time())
+
+	# dateutil parser does not agree with dates like 0000-00-00
+	if not datetime_str or (datetime_str or "").startswith("0000-00-00"):
+		return None
+
+	return parser.parse(datetime_str)
+
+def to_timedelta(time_str):
+	if isinstance(time_str, basestring):
+		t = parser.parse(time_str)
+		return datetime.timedelta(hours=t.hour, minutes=t.minute, seconds=t.second, microseconds=t.microsecond)
+
+	else:
+		return time_str
 
 def add_to_date(date, years=0, months=0, days=0):
 	"""Adds `days` to the given date"""
-	format = isinstance(date, basestring)
-	if date:
-		date = getdate(date)
-	else:
-		raise Exception, "Start date required"
-
 	from dateutil.relativedelta import relativedelta
-	date += relativedelta(years=years, months=months, days=days)
 
-	if format:
-		return date.strftime("%Y-%m-%d")
+	as_string, as_datetime = False, False
+	if isinstance(date, basestring):
+		as_string = True
+		if " " in date:
+			as_datetime = True
+		date = parser.parse(date)
+
+	date = date + relativedelta(years=years, months=months, days=days)
+
+	if as_string:
+		if as_datetime:
+			return date.strftime(DATETIME_FORMAT)
+		else:
+			return date.strftime(DATE_FORMAT)
 	else:
 		return date
 
@@ -65,42 +107,44 @@ def time_diff_in_hours(string_ed_date, string_st_date):
 def now_datetime():
 	return convert_utc_to_user_timezone(datetime.datetime.utcnow())
 
-def get_user_time_zone():
-	if getattr(frappe.local, "user_time_zone", None) is None:
-		frappe.local.user_time_zone = frappe.cache().get_value("time_zone")
+def _get_time_zone():
+	time_zone = (frappe.db.get_single_value("System Settings", "time_zone")
+		or "Asia/Kolkata")
 
-	if not frappe.local.user_time_zone:
-		frappe.local.user_time_zone = frappe.db.get_default('time_zone') or 'Asia/Calcutta'
-		frappe.cache().set_value("time_zone", frappe.local.user_time_zone)
+	return time_zone
 
-	return frappe.local.user_time_zone
+def get_time_zone():
+	if frappe.local.flags.in_test:
+		return _get_time_zone()
+
+	return frappe.cache().get_value("time_zone", _get_time_zone)
 
 def convert_utc_to_user_timezone(utc_timestamp):
 	from pytz import timezone, UnknownTimeZoneError
 	utcnow = timezone('UTC').localize(utc_timestamp)
 	try:
-		return utcnow.astimezone(timezone(get_user_time_zone()))
+		return utcnow.astimezone(timezone(get_time_zone()))
 	except UnknownTimeZoneError:
 		return utcnow
 
 def now():
 	"""return current datetime as yyyy-mm-dd hh:mm:ss"""
 	if getattr(frappe.local, "current_date", None):
-		return getdate(frappe.local.current_date).strftime("%Y-%m-%d") + " " + \
-			now_datetime().strftime('%H:%M:%S.%f')
+		return getdate(frappe.local.current_date).strftime(DATE_FORMAT) + " " + \
+			now_datetime().strftime(TIME_FORMAT)
 	else:
-		return now_datetime().strftime('%Y-%m-%d %H:%M:%S.%f')
+		return now_datetime().strftime(DATETIME_FORMAT)
 
 def nowdate():
 	"""return current date as yyyy-mm-dd"""
-	return now_datetime().strftime('%Y-%m-%d')
+	return now_datetime().strftime(DATE_FORMAT)
 
 def today():
 	return nowdate()
 
 def nowtime():
 	"""return current time in hh:mm"""
-	return now_datetime().strftime('%H:%M:%S.%f')
+	return now_datetime().strftime(TIME_FORMAT)
 
 def get_first_day(dt, d_years=0, d_months=0):
 	"""
@@ -122,27 +166,25 @@ def get_last_day(dt):
 	"""
 	return get_first_day(dt, 0, 1) + datetime.timedelta(-1)
 
-def get_datetime(datetime_str):
-	try:
-		return datetime.datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S.%f')
 
-	except TypeError:
-		if isinstance(datetime_str, datetime.datetime):
-			return datetime_str.replace(tzinfo=None)
-		else:
-			raise
-
-	except ValueError:
-		if datetime_str=='0000-00-00 00:00:00.000000':
-			return None
-
-		return datetime.datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
+def get_time(time_str):
+	if isinstance(time_str, datetime.datetime):
+		return time_str.time()
+	elif isinstance(time_str, datetime.time):
+		return time_str
+	return parser.parse(time_str).time()
 
 def get_datetime_str(datetime_obj):
 	if isinstance(datetime_obj, basestring):
 		datetime_obj = get_datetime(datetime_obj)
 
-	return datetime_obj.strftime('%Y-%m-%d %H:%M:%S.%f')
+	return datetime_obj.strftime(DATETIME_FORMAT)
+
+def get_user_format():
+	if getattr(frappe.local, "user_format", None) is None:
+		frappe.local.user_format = frappe.db.get_default("date_format")
+
+	return frappe.local.user_format or "yyyy-mm-dd"
 
 def formatdate(string_date=None, format_string=None):
 	"""
@@ -156,21 +198,23 @@ def formatdate(string_date=None, format_string=None):
 		 * dd/mm/yyyy
 	"""
 	date = getdate(string_date) if string_date else now_datetime().date()
+	if not format_string:
+		format_string = get_user_format().replace("mm", "MM")
 
-	if format_string:
-		return babel.dates.format_date(date, format_string or "medium", locale=(frappe.local.lang or "").replace("-", "_"))
-	else:
-		if getattr(frappe.local, "user_format", None) is None:
-			frappe.local.user_format = frappe.db.get_default("date_format")
+	return babel.dates.format_date(date, format_string, locale=(frappe.local.lang or "").replace("-", "_"))
 
-		out = frappe.local.user_format or "yyyy-mm-dd"
+def format_time(txt):
+	return babel.dates.format_time(get_time(txt), locale=(frappe.local.lang or "").replace("-", "_"))
 
-		try:
-			return out.replace("dd", date.strftime("%d"))\
-				.replace("mm", date.strftime("%m"))\
-				.replace("yyyy", date.strftime("%Y"))
-		except ValueError, e:
-			raise frappe.ValidationError, str(e)
+def format_datetime(datetime_string, format_string=None):
+	if not datetime_string:
+		return
+
+	datetime = get_datetime(datetime_string)
+	if not format_string:
+		format_string = get_user_format().replace("mm", "MM") + " HH:mm:ss"
+
+	return babel.dates.format_datetime(datetime, format_string, locale=(frappe.local.lang or "").replace("-", "_"))
 
 def global_date_format(date):
 	"""returns date as 1 January 2012"""
@@ -185,12 +229,14 @@ def flt(s, precision=None):
 	"""Convert to float (ignore commas)"""
 	if isinstance(s, basestring):
 		s = s.replace(',','')
+
 	try:
 		num = float(s)
 		if precision is not None:
 			num = rounded(num, precision)
 	except Exception:
 		num = 0
+
 	return num
 
 def cint(s):
@@ -210,7 +256,7 @@ def cstr(s):
 		return unicode(s)
 
 def rounded(num, precision=0):
-	"""round method for round halfs to nearest even algorithm"""
+	"""round method for round halfs to nearest even algorithm aka banker's rounding - compatible with python3"""
 	precision = cint(precision)
 	multiplier = 10 ** precision
 
@@ -220,7 +266,7 @@ def rounded(num, precision=0):
 	floor = math.floor(num)
 	decimal_part = num - floor
 
-	if decimal_part == 0.5:
+	if not precision and decimal_part == 0.5:
 		num = floor if (floor % 2 == 0) else floor + 1
 	else:
 		num = round(num)
@@ -257,7 +303,7 @@ def fmt_money(amount, precision=None, currency=None):
 	"""
 	number_format = None
 	if currency:
-		number_format = frappe.db.get_value("Currency", currency, "number_format")
+		number_format = frappe.db.get_value("Currency", currency, "number_format", cache=True)
 
 	if not number_format:
 		number_format = frappe.db.get_default("number_format") or "#,###.##"
@@ -343,7 +389,7 @@ def money_in_words(number, main_currency = None, fraction_currency=None):
 	if len(fraction)==1: fraction += '0'
 
 
-	number_format = frappe.db.get_value("Currency", main_currency, "number_format") or \
+	number_format = frappe.db.get_value("Currency", main_currency, "number_format", cache=True) or \
 		frappe.db.get_default("number_format") or "#,###.##"
 
 	in_million = True
@@ -362,60 +408,13 @@ def in_words(integer, in_million=True):
 	"""
 	Returns string in words for the given integer.
 	"""
-	_ = frappe._
-
-	n=int(integer)
-	known = {0: 'zero', 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten',
-		11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen', 15: 'fifteen', 16: 'sixteen', 17: 'seventeen', 18: 'eighteen',
-		19: 'nineteen', 20: 'twenty', 30: 'thirty', 40: 'forty', 50: 'fifty', 60: 'sixty', 70: 'seventy', 80: 'eighty', 90: 'ninety'}
-
-	def psn(n, known, xpsn):
-		import sys;
-		if n in known: return known[n]
-		bestguess, remainder = str(n), 0
-
-		if n<=20:
-			frappe.errprint(sys.stderr)
-			frappe.errprint(n)
-			frappe.errprint("How did this happen?")
-			assert 0
-		elif n < 100:
-			bestguess= xpsn((n//10)*10, known, xpsn) + '-' + xpsn(n%10, known, xpsn)
-			return bestguess
-		elif n < 1000:
-			bestguess= xpsn(n//100, known, xpsn) + ' ' + _('hundred')
-			remainder = n%100
-		else:
-			if in_million:
-				if n < 1000000:
-					bestguess= xpsn(n//1000, known, xpsn) + ' ' + _('thousand')
-					remainder = n%1000
-				elif n < 1000000000:
-					bestguess= xpsn(n//1000000, known, xpsn) + ' ' + _('million')
-					remainder = n%1000000
-				else:
-					bestguess= xpsn(n//1000000000, known, xpsn) + ' ' + _('billion')
-					remainder = n%1000000000
-			else:
-				if n < 100000:
-					bestguess= xpsn(n//1000, known, xpsn) + ' ' + _('thousand')
-					remainder = n%1000
-				elif n < 10000000:
-					bestguess= xpsn(n//100000, known, xpsn) + ' ' + _('lakh')
-					remainder = n%100000
-				else:
-					bestguess= xpsn(n//10000000, known, xpsn) + ' ' + _('crore')
-					remainder = n%10000000
-		if remainder:
-			if remainder >= 100:
-				comma = ','
-			else:
-				comma = ''
-			return bestguess + comma + ' ' + xpsn(remainder, known, xpsn)
-		else:
-			return bestguess
-
-	return psn(n, known, psn)
+	locale = 'en_IN' if not in_million else frappe.local.lang
+	integer = int(integer)
+	try:
+		ret = num2words(integer, lang=locale)
+	except NotImplementedError:
+		ret = num2words(integer, lang='en')
+	return ret.replace('-', ' ')
 
 def is_html(text):
 	out = False
@@ -453,8 +452,8 @@ def pretty_date(iso_datetime):
 	import math
 
 	if isinstance(iso_datetime, basestring):
-		iso_datetime = datetime.datetime.strptime(iso_datetime, '%Y-%m-%d %H:%M:%S.%f')
-	now_dt = datetime.datetime.strptime(now(), '%Y-%m-%d %H:%M:%S.%f')
+		iso_datetime = datetime.datetime.strptime(iso_datetime, DATETIME_FORMAT)
+	now_dt = datetime.datetime.strptime(now(), DATETIME_FORMAT)
 	dt_diff = now_dt - iso_datetime
 
 	# available only in python 2.7+
@@ -487,12 +486,12 @@ def pretty_date(iso_datetime):
 		return 'more than %s year(s) ago' % cint(math.floor(dt_diff_days / 365.0))
 
 def comma_or(some_list):
-	return comma_sep(some_list, " or ")
+	return comma_sep(some_list, frappe._("{0} or {1}"))
 
 def comma_and(some_list):
-	return comma_sep(some_list, " and ")
+	return comma_sep(some_list, frappe._("{0} and {1}"))
 
-def comma_sep(some_list, sep):
+def comma_sep(some_list, pattern):
 	if isinstance(some_list, (list, tuple)):
 		# list(some_list) is done to preserve the existing list
 		some_list = [unicode(s) for s in list(some_list)]
@@ -502,7 +501,7 @@ def comma_sep(some_list, sep):
 			return some_list[0]
 		else:
 			some_list = ["'%s'" % s for s in some_list]
-			return ", ".join(some_list[:-1]) + sep + some_list[-1]
+			return pattern.format(", ".join(frappe._(s) for s in some_list[:-1]), some_list[-1])
 	else:
 		return some_list
 
@@ -572,7 +571,8 @@ def compare(val1, condition, val2):
 
 def scrub_urls(html):
 	html = expand_relative_urls(html)
-	html = quote_urls(html)
+	# encoding should be responsibility of the composer
+	# html = quote_urls(html)
 	return html
 
 def expand_relative_urls(html):
@@ -589,10 +589,13 @@ def expand_relative_urls(html):
 
 	return re.sub('(href|src){1}([\s]*=[\s]*[\'"]?)((?!http)[^\'" >]+)([\'"]?)', _expand_relative_urls, html)
 
+def quoted(url):
+	return cstr(urllib.quote(encode(url), safe=b"~@#$&()*!+=:;,.?/'"))
+
 def quote_urls(html):
 	def _quote_url(match):
 		groups = list(match.groups())
-		groups[2] = urllib.quote(groups[2].encode("utf-8"), safe=b"~@#$&()*!+=:;,.?/'").decode("utf-8")
+		groups[2] = quoted(groups[2])
 		return "".join(groups)
 	return re.sub('(href|src){1}([\s]*=[\s]*[\'"]?)((?:http)[^\'">]+)([\'"]?)',
 		_quote_url, html)
@@ -604,3 +607,7 @@ def unique(seq):
 	seen = set()
 	seen_add = seen.add
 	return [ x for x in seq if not (x in seen or seen_add(x)) ]
+
+def strip(val, chars=None):
+	# \ufeff is no-width-break, \u200b is no-width-space
+	return (val or "").replace("\ufeff", "").replace("\u200b", "").strip(chars)

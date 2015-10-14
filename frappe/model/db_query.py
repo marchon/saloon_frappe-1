@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -6,22 +6,25 @@ from __future__ import unicode_literals
 
 import frappe, json
 import frappe.defaults
+import frappe.share
 import frappe.permissions
-from frappe.utils import flt
+from frappe.utils import flt, cint, getdate, get_datetime, get_time
 from frappe import _
+from frappe.model import optional_fields
 
 class DatabaseQuery(object):
 	def __init__(self, doctype):
 		self.doctype = doctype
 		self.tables = []
 		self.conditions = []
+		self.or_conditions = []
 		self.fields = ["`tab{0}`.`name`".format(doctype)]
 		self.user = None
-		self.ignore_permissions = False
+		self.flags = frappe._dict()
 
-	def execute(self, query=None, filters=None, fields=None, or_filters=None,
-		docstatus=None, group_by=None, order_by=None, limit_start=0,
-		limit_page_length=20, as_list=False, with_childnames=False, debug=False,
+	def execute(self, query=None, fields=None, filters=None, or_filters=None,
+		docstatus=None, group_by=None, order_by=None, limit_start=False,
+		limit_page_length=None, as_list=False, with_childnames=False, debug=False,
 		ignore_permissions=False, user=None):
 		if not ignore_permissions and not frappe.has_permission(self.doctype, "read", user=user):
 			raise frappe.PermissionError, self.doctype
@@ -33,12 +36,12 @@ class DatabaseQuery(object):
 		self.docstatus = docstatus or []
 		self.group_by = group_by
 		self.order_by = order_by
-		self.limit_start = limit_start
-		self.limit_page_length = limit_page_length
+		self.limit_start = 0 if (limit_start is False) else cint(limit_start)
+		self.limit_page_length = cint(limit_page_length) if limit_page_length else None
 		self.with_childnames = with_childnames
 		self.debug = debug
 		self.as_list = as_list
-		self.ignore_permissions = ignore_permissions
+		self.flags.ignore_permissions = ignore_permissions
 		self.user = user or frappe.session.user
 
 		if query:
@@ -78,9 +81,15 @@ class DatabaseQuery(object):
 		for tname in self.tables[1:]:
 			args.tables += " left join " + tname + " on " + tname + '.parent = ' + self.tables[0] + '.name'
 
-		if self.or_conditions:
-			self.conditions.append("({0})".format(" or ".join(self.or_conditions)))
+		if self.grouped_or_conditions:
+			self.conditions.append("({0})".format(" or ".join(self.grouped_or_conditions)))
+
 		args.conditions = ' and '.join(self.conditions)
+
+		if self.or_conditions:
+			args.conditions += (' or ' if args.conditions else "") + \
+				 ' or '.join(self.or_conditions)
+
 		args.fields = ', '.join(self.fields)
 
 		self.set_order_by(args)
@@ -92,18 +101,27 @@ class DatabaseQuery(object):
 		return args
 
 	def parse_args(self):
-		if isinstance(self.filters, basestring):
-			self.filters = json.loads(self.filters)
+		"""Convert fields and filters from strings to list, dicts"""
 		if isinstance(self.fields, basestring):
 			if self.fields == "*":
 				self.fields = ["*"]
 			else:
-				self.fields = json.loads(self.fields)
-		if isinstance(self.filters, dict):
-			fdict = self.filters
-			self.filters = []
-			for key, value in fdict.iteritems():
-				self.filters.append(self.make_filter_tuple(key, value))
+				try:
+					self.fields = json.loads(self.fields)
+				except ValueError:
+					self.fields = [f.strip() for f in self.fields.split(",")]
+
+		for filter_name in ["filters", "or_filters"]:
+			filters = getattr(self, filter_name)
+			if isinstance(filters, basestring):
+				filters = json.loads(filters)
+
+			if isinstance(filters, dict):
+				fdict = filters
+				filters = []
+				for key, value in fdict.iteritems():
+					filters.append(self.make_filter_tuple(key, value))
+			setattr(self, filter_name, filters)
 
 	def make_filter_tuple(self, key, value):
 		if isinstance(value, (list, tuple)):
@@ -134,7 +152,7 @@ class DatabaseQuery(object):
 	def append_table(self, table_name):
 		self.tables.append(table_name)
 		doctype = table_name[4:-1]
-		if (not self.ignore_permissions) and (not frappe.has_permission(doctype)):
+		if (not self.flags.ignore_permissions) and (not frappe.has_permission(doctype)):
 			raise frappe.PermissionError, doctype
 
 	def remove_user_tags(self):
@@ -144,7 +162,7 @@ class DatabaseQuery(object):
 		# remove from fields
 		to_remove = []
 		for fld in self.fields:
-			for f in ("_user_tags", "_comments", "_assign", "_starred_by"):
+			for f in optional_fields:
 				if f in fld and not f in columns:
 					to_remove.append(fld)
 
@@ -158,7 +176,7 @@ class DatabaseQuery(object):
 				each = [each]
 
 			for element in each:
-				if element in ("_user_tags", "_comments", "_assign", "_starred_by") and element not in columns:
+				if element in optional_fields and element not in columns:
 					to_remove.append(each)
 
 		for each in to_remove:
@@ -169,12 +187,12 @@ class DatabaseQuery(object):
 
 	def build_conditions(self):
 		self.conditions = []
-		self.or_conditions = []
+		self.grouped_or_conditions = []
 		self.build_filter_conditions(self.filters, self.conditions)
-		self.build_filter_conditions(self.or_filters, self.or_conditions)
+		self.build_filter_conditions(self.or_filters, self.grouped_or_conditions)
 
 		# match conditions
-		if not self.ignore_permissions:
+		if not self.flags.ignore_permissions:
 			match_conditions = self.build_match_conditions()
 			if match_conditions:
 				self.conditions.append("(" + match_conditions + ")")
@@ -183,43 +201,88 @@ class DatabaseQuery(object):
 		"""build conditions from user filters"""
 		if isinstance(filters, dict):
 			filters = [filters]
+
 		for f in filters:
 			if isinstance(f, basestring):
 				conditions.append(f)
 			else:
-				f = self.get_filter_tuple(f)
+				conditions.append(self.prepare_filter_condition(f))
 
-				tname = ('`tab' + f[0] + '`')
-				if not tname in self.tables:
-					self.append_table(tname)
+	def prepare_filter_condition(self, f):
+		"""Returns a filter condition in the format:
 
-				# prepare in condition
-				if f[2] in ['in', 'not in']:
-					opts = f[3]
-					if not isinstance(opts, (list, tuple)):
-						opts = f[3].split(",")
-					opts = [frappe.db.escape(t.strip()) for t in opts]
-					f[3] = '("{0}")'.format('", "'.join(opts))
-					conditions.append('ifnull({tname}.{fname}, "") {operator} {value}'.format(
-						tname=tname, fname=f[1], operator=f[2], value=f[3]))
-				else:
-					df = frappe.get_meta(f[0]).get("fields", {"fieldname": f[1]})
+				ifnull(`tabDocType`.`fieldname`, fallback) operator "value"
+		"""
 
-					if f[2] == "like" or (isinstance(f[3], basestring) and
-						(not df or df[0].fieldtype not in ["Float", "Int", "Currency", "Percent", "Check"])):
-							if f[2] == "like":
-								# because "like" uses backslash (\) for escaping
-								f[3] = f[3].replace("\\", "\\\\")
+		f = self.get_filter(f)
 
-							value, default_val = '"{0}"'.format(frappe.db.escape(f[3])), '""'
-					else:
-						value, default_val = flt(f[3]), 0
+		tname = ('`tab' + f.doctype + '`')
+		if not tname in self.tables:
+			self.append_table(tname)
 
-					conditions.append('ifnull({tname}.{fname}, {default_val}) {operator} {value}'.format(
-						tname=tname, fname=f[1], default_val=default_val, operator=f[2],
-						value=value))
+		# prepare in condition
+		if f.operator in ('in', 'not in'):
+			values = f.value
+			if not isinstance(values, (list, tuple)):
+				values = values.split(",")
 
-	def get_filter_tuple(self, f):
+			values = (frappe.db.escape(v.strip()) for v in values)
+			values = '("{0}")'.format('", "'.join(values))
+
+			condition = 'ifnull({tname}.{fname}, "") {operator} {value}'.format(
+				tname=tname, fname=f.fieldname, operator=f.operator, value=values)
+
+		else:
+			df = frappe.get_meta(f.doctype).get("fields", {"fieldname": f.fieldname})
+			df = df[0] if df else None
+
+			if df and df.fieldtype=="Date":
+				value = getdate(f.value).strftime("%Y-%m-%d")
+				fallback = "'0000-00-00'"
+
+			elif df and df.fieldtype=="Datetime":
+				value = get_datetime(f.value).strftime("%Y-%m-%d %H:%M:%S.%f")
+				fallback = "'0000-00-00 00:00:00'"
+
+			elif df and df.fieldtype=="Time":
+				value = get_time(f.value).strftime("%H:%M:%S.%f")
+				fallback = "'00:00:00'"
+
+			elif f.operator == "like" or (isinstance(f.value, basestring) and
+				(not df or df.fieldtype not in ["Float", "Int", "Currency", "Percent", "Check"])):
+					value = f.value
+					fallback = '""'
+
+					if f.operator == "like" and isinstance(value, basestring):
+						# because "like" uses backslash (\) for escaping
+						value = value.replace("\\", "\\\\")
+
+			else:
+				value = flt(f.value)
+				fallback = 0
+
+			# put it inside double quotes
+			if isinstance(value, basestring):
+				value = '"{0}"'.format(frappe.db.escape(value))
+
+			condition = 'ifnull({tname}.{fname}, {fallback}) {operator} {value}'.format(
+				tname=tname, fname=f.fieldname, fallback=fallback, operator=f.operator,
+				value=value)
+
+		# replace % with %% to prevent python format string error
+		return condition.replace("%", "%%")
+
+	def get_filter(self, f):
+		"""Returns a _dict like
+
+			{
+				"doctype": "DocType",
+				"fieldname": "fieldname",
+				"operator": "=",
+				"value": "value"
+			}
+
+		"""
 		if isinstance(f, dict):
 			key, value = f.items()[0]
 			f = self.make_filter_tuple(key, value)
@@ -231,28 +294,46 @@ class DatabaseQuery(object):
 			f = (self.doctype, f[0], f[1], f[2])
 
 		elif len(f) != 4:
-			frappe.throw("Filter must have 4 values (doctype, fieldname, condition, value): " + str(f))
+			frappe.throw("Filter must have 4 values (doctype, fieldname, operator, value): " + str(f))
 
-		return list(f)
+		return frappe._dict({
+			"doctype": f[0],
+			"fieldname": f[1],
+			"operator": f[2],
+			"value": f[3]
+		})
 
 	def build_match_conditions(self, as_condition=True):
 		"""add match conditions if applicable"""
 		self.match_filters = []
 		self.match_conditions = []
+		only_if_shared = False
 
 		if not self.tables: self.extract_tables()
 
 		meta = frappe.get_meta(self.doctype)
 		role_permissions = frappe.permissions.get_role_permissions(meta, user=self.user)
-		if not meta.istable and not role_permissions.get("read") and not getattr(self, "ignore_permissions", False):
-			frappe.throw(_("No permission to read {0}").format(self.doctype))
 
-		# apply user permissions?
-		if role_permissions.get("apply_user_permissions", {}).get("read"):
-			# get user permissions
-			user_permissions = frappe.defaults.get_user_permissions(self.user)
-			self.add_user_permissions(user_permissions,
-				user_permission_doctypes=role_permissions.get("user_permission_doctypes"))
+		self.shared = frappe.share.get_shared(self.doctype, self.user)
+
+		if not meta.istable and not role_permissions.get("read") and not self.flags.ignore_permissions:
+			only_if_shared = True
+			if not self.shared:
+				frappe.throw(_("No permission to read {0}").format(self.doctype), frappe.PermissionError)
+			else:
+				self.conditions.append(self.get_share_condition())
+
+		else:
+			# apply user permissions?
+			if role_permissions.get("apply_user_permissions", {}).get("read"):
+				# get user permissions
+				user_permissions = frappe.defaults.get_user_permissions(self.user)
+				self.add_user_permissions(user_permissions,
+					user_permission_doctypes=role_permissions.get("user_permission_doctypes").get("read"))
+
+			if role_permissions.get("if_owner", {}).get("read"):
+				self.match_conditions.append("`tab{0}`.owner = '{1}'".format(self.doctype,
+					frappe.db.escape(frappe.session.user)))
 
 		if as_condition:
 			conditions = ""
@@ -264,14 +345,23 @@ class DatabaseQuery(object):
 			if doctype_conditions:
 				conditions += (' and ' + doctype_conditions) if conditions else doctype_conditions
 
-			return conditions
+			# share is an OR condition, if there is a role permission
+			if not only_if_shared and self.shared and conditions:
+				conditions =  "({conditions}) or ({shared_condition})".format(
+					conditions=conditions, shared_condition=self.get_share_condition())
+
+			# replace % with %% to prevent python format string error
+			return conditions.replace("%", "%%")
 
 		else:
 			return self.match_filters
 
+	def get_share_condition(self):
+		return """`tab{0}`.name in ({1})""".format(self.doctype, ", ".join(["'%s'"] * len(self.shared))) % \
+			tuple([frappe.db.escape(s) for s in self.shared])
+
 	def add_user_permissions(self, user_permissions, user_permission_doctypes=None):
-		user_permission_doctypes = frappe.permissions.get_user_permission_doctypes(user_permission_doctypes,
-			user_permissions)
+		user_permission_doctypes = frappe.permissions.get_user_permission_doctypes(user_permission_doctypes, user_permissions)
 		meta = frappe.get_meta(self.doctype)
 
 		for doctypes in user_permission_doctypes:
@@ -279,13 +369,17 @@ class DatabaseQuery(object):
 			match_conditions = []
 			# check in links
 			for df in meta.get_fields_to_check_permissions(doctypes):
-				match_conditions.append("""(ifnull(`tab{doctype}`.`{fieldname}`, "")=""
-					or `tab{doctype}`.`{fieldname}` in ({values}))""".format(
-					doctype=self.doctype,
-					fieldname=df.fieldname,
-					values=", ".join([('"'+v.replace('"', '\"')+'"') for v in user_permissions[df.options]])
-				))
-				match_filters[df.options] = user_permissions[df.options]
+				user_permission_values = user_permissions.get(df.options, [])
+
+				condition = 'ifnull(`tab{doctype}`.`{fieldname}`, "")=""'.format(doctype=self.doctype, fieldname=df.fieldname)
+				if user_permission_values:
+					condition += """ or `tab{doctype}`.`{fieldname}` in ({values})""".format(
+						doctype=self.doctype, fieldname=df.fieldname,
+						values=", ".join([('"'+frappe.db.escape(v)+'"') for v in user_permission_values])
+					)
+				match_conditions.append("({condition})".format(condition=condition))
+
+				match_filters[df.options] = user_permission_values
 
 			if match_conditions:
 				self.match_conditions.append(" and ".join(match_conditions))

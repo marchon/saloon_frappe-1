@@ -1,4 +1,5 @@
 @import "variables.less";
+@import "mixins.less";
 
 .navbar .dropdown-toggle {
 	padding-top: 8px;
@@ -13,14 +14,6 @@
 .navbar a {
 	font-size: 12px;
 	font-weight: bold;
-}
-
-.navbar .breadcrumb-divider {
-	margin-top: 10px;
-}
-
-.navbar .breadcrumb-divider i {
-	color: #C0C9D2;
 }
 
 .navbar-icon-home {
@@ -50,7 +43,7 @@
 	background-color: @indicator-red;
 	color: #fff;
 	text-align: center;
-	padding: 1px 5px;
+	padding: 2px 5px;
 }
 
 #navbar-search {
@@ -70,15 +63,6 @@
 	font-weight: normal;
 }
 
-#sidebar-notification > li > a&,
-#navbar-notification > li > a& {
-	&:hover .badge,
-	&:focus .badge,
-	&:active .badge {
-		background-color: #D8DFE5;
-	}
-}
-
 #navbar-search-results {
 	left: auto;
 	right: inherit;
@@ -88,3 +72,37 @@
 	overflow-x: hidden;
 }
 
+.navbar-center {
+	float: left;
+	color: @navbar-default-color;
+}
+
+#navbar-breadcrumbs > li > a:before {
+	.breadcrumb-divider();
+	.breadcrumb-divider-right();
+}
+
+#navbar-breadcrumbs > li > a& {
+	&:hover:before,
+	&:focus:before,
+	&:active:before {
+		color: @text-color;
+	}
+}
+
+#navbar-breadcrumbs > li > a {
+	padding: 6px 15px 10px 0px;
+}
+
+.toolbar-user-fullname {
+	max-width: 200px;
+	display: inline-block;
+}
+
+.navbar-brand {
+	padding: 10px;
+}
+
+.navbar-brand > img {
+	display: inline-block;
+}

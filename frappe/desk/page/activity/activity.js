@@ -1,9 +1,9 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // License: See license.txt
 
 frappe.provide("frappe.activity");
 
-frappe.pages['activity'].onload = function(wrapper) {
+frappe.pages['activity'].on_page_load = function(wrapper) {
 	var me = this;
 
 	frappe.require('assets/frappe/js/lib/flot/jquery.flot.js');
@@ -16,7 +16,7 @@ frappe.pages['activity'].onload = function(wrapper) {
 
 	this.page = wrapper.page;
 
-	this.page.set_title(__("Activty"), frappe.get_module("Activity").icon);
+	this.page.set_title(__("Activity"), frappe.get_module("Activity").icon);
 
 	this.page.list = new frappe.ui.Listing({
 		hide_refresh: true,

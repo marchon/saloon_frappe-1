@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -6,7 +6,7 @@ import frappe
 from frappe.desk.notifications import delete_notification_count_for
 from frappe.core.doctype.user.user import STANDARD_USERS
 from frappe.utils.user import get_enabled_system_users
-from frappe.utils import cint
+from frappe.utils import cint, get_fullname
 
 @frappe.whitelist()
 def get_list(arg=None):
@@ -20,7 +20,7 @@ def get_list(arg=None):
 	frappe.db.sql("""UPDATE `tabComment`
 	set docstatus = 1 where comment_doctype in ('My Company', 'Message')
 	and comment_docname = %s
-	""", frappe.user.name)
+	""", frappe.session.user)
 
 	delete_notification_count_for("Messages")
 
@@ -78,6 +78,7 @@ def post(txt, contact, parenttype=None, notify=False, subject=None):
 	d.comment = txt
 	d.comment_docname = contact
 	d.comment_doctype = 'Message'
+	d.comment_by_fullname = get_fullname(frappe.session.user)
 	d.insert(ignore_permissions=True)
 
 	delete_notification_count_for("Messages")
@@ -88,10 +89,11 @@ def post(txt, contact, parenttype=None, notify=False, subject=None):
 		else:
 			_notify(contact, txt, subject)
 
+	return d
+
 @frappe.whitelist()
 def delete(arg=None):
-	frappe.db.sql("""delete from `tabComment` where name=%s""",
-		frappe.form_dict['name']);
+	frappe.get_doc("Comment", frappe.form_dict['name']).delete()
 
 def _notify(contact, txt, subject=None):
 	from frappe.utils import get_fullname, get_url
@@ -102,9 +104,9 @@ def _notify(contact, txt, subject=None):
 		frappe.sendmail(\
 			recipients=contact,
 			sender= frappe.db.get_value("User", frappe.session.user, "email"),
-			subject=subject or "New Message from " + get_fullname(frappe.user.name),
+			subject=subject or "New Message from " + get_fullname(frappe.session.user),
 			message=frappe.get_template("templates/emails/new_message.html").render({
-				"from": get_fullname(frappe.user.name),
+				"from": get_fullname(frappe.session.user),
 				"message": txt,
 				"link": get_url()
 			}),

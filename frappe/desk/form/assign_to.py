@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -6,7 +6,6 @@ from __future__ import unicode_literals
 
 import frappe
 from frappe import _
-from frappe.utils import cint
 from frappe.desk.form.load import get_docinfo
 
 def get(args=None):
@@ -51,7 +50,7 @@ def add(args=None):
 			"priority": args.get("priority", "Medium"),
 			"status": "Open",
 			"date": args.get('date', nowdate()),
-			"assigned_by": args.get('assigned_by', frappe.user.name),
+			"assigned_by": args.get('assigned_by', frappe.session.user),
 		}).insert(ignore_permissions=True)
 
 		# set assigned_to if field exists
@@ -68,11 +67,13 @@ def add(args=None):
 def remove(doctype, name, assign_to):
 	"""remove from todo"""
 	try:
-		todo = frappe.get_doc("ToDo", {"reference_type":doctype, "reference_name":name, "owner":assign_to, "status":"Open"})
-		todo.status = "Closed"
-		todo.save(ignore_permissions=True)
+		todo = frappe.db.get_value("ToDo", {"reference_type":doctype, "reference_name":name, "owner":assign_to, "status":"Open"})
+		if todo:
+			todo = frappe.get_doc("ToDo", todo)
+			todo.status = "Closed"
+			todo.save(ignore_permissions=True)
 
-		notify_assignment(todo.assigned_by, todo.owner, todo.reference_type, todo.reference_name)
+			notify_assignment(todo.assigned_by, todo.owner, todo.reference_type, todo.reference_name)
 	except frappe.DoesNotExistError:
 		pass
 
@@ -104,28 +105,27 @@ def notify_assignment(assigned_by, owner, doc_type, doc_name, action='CLOSE',
 	# Search for email address in description -- i.e. assignee
 	from frappe.utils import get_url_to_form
 	assignment = get_url_to_form(doc_type, doc_name, label="%s: %s" % (doc_type, doc_name))
-
+	owner_name = user_info.get(owner, {}).get('fullname')
+	user_name = user_info.get(frappe.session.get('user'), {}).get('fullname')
 	if action=='CLOSE':
 		if owner == frappe.session.get('user'):
 			arg = {
 				'contact': assigned_by,
-				'txt': _("The task %s, that you assigned to %s, has been closed.") % (assignment,
-						user_info.get(owner, {}).get('fullname'))
+				'txt': _("The task {0}, that you assigned to {1}, has been closed.").format(assignment,
+						owner_name)
 			}
 		else:
 			arg = {
 				'contact': assigned_by,
-				'txt': _("The task %s, that you assigned to %s, has been closed by %s.") % (assignment,
-					user_info.get(owner, {}).get('fullname'),
-					user_info.get(frappe.session.get('user'),
-						{}).get('fullname'))
+				'txt': _("The task {0}, that you assigned to {1}, has been closed by {2}.").format(assignment,
+					owner_name, user_name)
 			}
 	else:
+		description_html = "<p>{0}</p>".format(description)
 		arg = {
 			'contact': owner,
-			'txt': _("A new task, %s, has been assigned to you by %s. %s") % (assignment,
-				user_info.get(frappe.session.get('user'), {}).get('fullname'),
-				description and ("<p>" + _("Description") + ": " + description + "</p>") or ""),
+			'txt': _("A new task, {0}, has been assigned to you by {1}. {2}").format(assignment,
+				user_name, description_html),
 			'notify': notify
 		}
 

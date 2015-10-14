@@ -1,10 +1,12 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 // My HTTP Request
 
 frappe.provide('frappe.request');
 frappe.request.url = '/';
+frappe.request.ajax_count = 0;
+frappe.request.waiting_for_ajax = [];
 
 // generic server call (call page, object)
 frappe.call = function(opts) {
@@ -26,15 +28,31 @@ frappe.call = function(opts) {
 		args.cmd = opts.method;
 	}
 
+	var callback = function(data, response_text) {
+		if(data.task_id) {
+			// async call, subscribe
+			frappe.socket.subscribe(data.task_id, opts);
+
+			if(opts.queued) {
+				opts.queued(data);
+			}
+		}
+		else if (opts.callback) {
+			// ajax
+			return opts.callback(data, response_text);
+		}
+	}
+
 	return frappe.request.call({
 		type: opts.type || "POST",
 		args: args,
-		success: opts.callback,
+		success: callback,
 		error: opts.error,
 		always: opts.always,
 		btn: opts.btn,
 		freeze: opts.freeze,
-		show_spinner: !opts.no_spinner,
+		freeze_message: opts.freeze_message,
+		// show_spinner: !opts.no_spinner,
 		async: opts.async,
 		url: opts.url || frappe.request.url,
 	});
@@ -44,13 +62,14 @@ frappe.call = function(opts) {
 frappe.request.call = function(opts) {
 	frappe.request.prepare(opts);
 
-	// all requests will be post, set _type as POST for commit
-	opts.args._type = opts.type;
-
 	var statusCode = {
 		200: function(data, xhr) {
 			if(typeof data === "string") data = JSON.parse(data);
 			opts.success_callback && opts.success_callback(data, xhr.responseText);
+		},
+		401: function(xhr) {
+			msgprint(__("You have been logged out"));
+			frappe.app.logout();
 		},
 		404: function(xhr) {
 			msgprint(__("Not found"));
@@ -67,9 +86,23 @@ frappe.request.call = function(opts) {
 
 			msgprint(__("Not permitted"));
 		},
-		417: function(data, xhr) {
-			if(typeof data === "string") data = JSON.parse(data);
-			opts.error_callback && opts.error_callback(data, xhr.responseText);
+		508: function(xhr) {
+			msgprint(__("Another transaction is blocking this one. Please try again in a few seconds."));
+		},
+		413: function(data, xhr) {
+			msgprint(__("File size exceeded the maximum allowed size of {0} MB",
+				[(frappe.boot.max_file_size || 5242880) / 1048576]))
+		},
+		417: function(xhr) {
+			var r = xhr.responseJSON;
+			if (!r) {
+				try {
+					r = JSON.parse(xhr.responseText);
+				} catch (e) {
+					r = xhr.responseText;
+				}
+			}
+			opts.error_callback && opts.error_callback(r);
 		},
 		501: function(data, xhr) {
 			if(typeof data === "string") data = JSON.parse(data);
@@ -79,15 +112,20 @@ frappe.request.call = function(opts) {
 			msgprint(__("Server Error: Please check your server logs or contact tech support."))
 			opts.error_callback && opts.error_callback();
 			frappe.request.report_error(xhr, opts);
+		},
+		504: function(xhr) {
+			msgprint(__("Request Timed Out"))
+			opts.error_callback && opts.error_callback();
 		}
 	};
 
 	var ajax_args = {
 		url: opts.url || frappe.request.url,
 		data: opts.args,
-		type: 'POST',
+		type: opts.type,
 		dataType: opts.dataType || 'json',
-		async: opts.async
+		async: opts.async,
+		headers: { "X-Frappe-CSRF-Token": frappe.csrf_token }
 	};
 
 	frappe.last_request = ajax_args.data;
@@ -102,7 +140,9 @@ frappe.request.call = function(opts) {
 				data = JSON.parse(data.responseText);
 			}
 			frappe.request.cleanup(opts, data);
-			if(opts.always) opts.always(data);
+			if(opts.always) {
+				opts.always(data);
+			}
 		})
 		.done(function(data, textStatus, xhr) {
 			var status_code_handler = statusCode[xhr.statusCode().status];
@@ -123,14 +163,15 @@ frappe.request.call = function(opts) {
 
 // call execute serverside request
 frappe.request.prepare = function(opts) {
+	frappe.request.ajax_count++;
+
+	$("body").attr("data-ajax-state", "triggered");
+
 	// btn indicator
 	if(opts.btn) $(opts.btn).prop("disabled", true);
 
-	// navbar indicator
-	if(opts.show_spinner) frappe.set_loading();
-
 	// freeze page
-	if(opts.freeze) frappe.dom.freeze();
+	if(opts.freeze) frappe.dom.freeze(opts.freeze_message);
 
 	// stringify args if required
 	for(key in opts.args) {
@@ -156,8 +197,7 @@ frappe.request.cleanup = function(opts, r) {
 	// stop button indicator
 	if(opts.btn) $(opts.btn).prop("disabled", false);
 
-	// hide button indicator
-	if(opts.show_spinner) frappe.done_loading();
+	$("body").attr("data-ajax-state", "complete");
 
 	// un-freeze page
 	if(opts.freeze) frappe.dom.unfreeze();
@@ -165,7 +205,7 @@ frappe.request.cleanup = function(opts, r) {
 	// session expired? - Guest has no business here!
 	if(r.session_expired || frappe.get_cookie("sid")==="Guest") {
 		if(!frappe.app.logged_out) {
-			localStorage.setItem("session_lost_route", location.hash);
+			localStorage.setItem("session_last_route", location.hash);
 			msgprint(__('Session Expired. Logging you out'));
 			frappe.app.logout();
 		}
@@ -194,22 +234,16 @@ frappe.request.cleanup = function(opts, r) {
 
 	// debug messages
 	if(r._debug_messages) {
-		console.log("-")
-		console.log("-")
-		console.log("-")
 		if(opts.args) {
-			console.log("<<<< arguments ");
+			console.log("======== arguments ========");
 			console.log(opts.args);
-			console.log(">>>>")
+			console.log("========")
 		}
 		$.each(JSON.parse(r._debug_messages), function(i, v) { console.log(v); });
-		console.log("<<<< response");
+		console.log("======== response ========");
 		delete r._debug_messages;
 		console.log(r);
-		console.log(">>>>")
-		console.log("-")
-		console.log("-")
-		console.log("-")
+		console.log("========");
 	}
 
 	if(r.docs || r.docinfo) {
@@ -220,6 +254,22 @@ frappe.request.cleanup = function(opts, r) {
 	}
 
 	frappe.last_response = r;
+
+	frappe.request.ajax_count--;
+	if(!frappe.request.ajax_count) {
+		$.each(frappe.request.waiting_for_ajax || [], function(i, fn) {
+			fn();
+		});
+		frappe.request.waiting_for_ajax = [];
+	}
+}
+
+frappe.after_ajax = function(fn) {
+	if(frappe.request.ajax_count) {
+		frappe.request.waiting_for_ajax.push(fn);
+	} else {
+		fn();
+	}
 }
 
 frappe.request.report_error = function(xhr, request_opts) {
@@ -252,6 +302,8 @@ frappe.request.report_error = function(xhr, request_opts) {
 					'<div style="min-height: 100px; border: 1px solid #bbb; \
 						border-radius: 5px; padding: 15px; margin-bottom: 15px;"></div>',
 					'<hr>',
+					'<h5>App Versions</h5>',
+					'<pre>' + JSON.stringify(frappe.boot.versions, null, "\t") + '</pre>',
 					'<h5>Route</h5>',
 					'<pre>' + frappe.get_route_str() + '</pre>',
 					'<hr>',

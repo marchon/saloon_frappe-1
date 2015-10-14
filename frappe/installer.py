@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 # called from wnf.py
@@ -6,7 +6,7 @@
 
 from __future__ import unicode_literals
 
-import os, json
+import os, json, sys
 import frappe
 import frappe.database
 import getpass
@@ -18,8 +18,8 @@ from frappe.website import render, statics
 
 def install_db(root_login="root", root_password=None, db_name=None, source_sql=None,
 	admin_password=None, verbose=True, force=0, site_config=None, reinstall=False):
-	frappe.flags.in_install_db = True
 	make_conf(db_name, site_config=site_config)
+	frappe.flags.in_install_db = True
 	if reinstall:
 		frappe.connect(db_name=db_name)
 		dbman = DbManager(frappe.local.db)
@@ -33,6 +33,7 @@ def install_db(root_login="root", root_password=None, db_name=None, source_sql=N
 	frappe.conf.admin_password = frappe.conf.admin_password or admin_password
 
 	frappe.connect(db_name=db_name)
+	check_if_ready_for_barracuda()
 	import_db_from_sql(source_sql, verbose)
 	remove_missing_apps()
 
@@ -88,17 +89,24 @@ def make_connection(root_login, root_password):
 	return frappe.database.Database(user=root_login, password=root_password)
 
 def install_app(name, verbose=False, set_as_patched=True):
-	frappe.flags.in_install = name
 	frappe.clear_cache()
-
 	app_hooks = frappe.get_hooks(app_name=name)
 	installed_apps = frappe.get_installed_apps()
+
+	# install pre-requisites
+	if app_hooks.required_apps:
+		for app in app_hooks.required_apps:
+			install_app(app)
+
+	print "Installing {0}...".format(name)
+	frappe.flags.in_install = name
+	frappe.clear_cache()
 
 	if name not in frappe.get_all_apps(with_frappe=True):
 		raise Exception("App not in apps.txt")
 
 	if name in installed_apps:
-		print "App Already Installed"
+		print "Already installed"
 		frappe.msgprint("App {0} already installed".format(name))
 		return
 
@@ -121,7 +129,7 @@ def install_app(name, verbose=False, set_as_patched=True):
 	for after_install in app_hooks.after_install or []:
 		frappe.get_attr(after_install)()
 
-	print "Installing Fixtures..."
+	print "Installing fixtures..."
 	sync_fixtures(name)
 
 	frappe.flags.in_install = False
@@ -140,13 +148,45 @@ def remove_from_installed_apps(app_name):
 		installed_apps.remove(app_name)
 		frappe.db.set_global("installed_apps", json.dumps(installed_apps))
 		frappe.db.commit()
-		post_install()
+		if frappe.flags.in_install:
+			post_install()
+
+def remove_app(app_name, dry_run=False):
+	"""Delete app and all linked to the app's module with the app."""
+
+	if not dry_run:
+		confirm = raw_input("All doctypes (including custom), modules related to this app will be deleted. Are you sure you want to continue (y/n) ? ")
+		if confirm!="y":
+			return
+
+	from frappe.utils.backups import scheduled_backup
+	print "Backing up..."
+	scheduled_backup(ignore_files=True)
+
+	# remove modules, doctypes, roles
+	for module_name in frappe.get_module_list(app_name):
+		for doctype in frappe.get_list("DocType", filters={"module": module_name},
+			fields=["name", "issingle"]):
+			print "removing {0}...".format(doctype.name)
+			# drop table
+
+			if not dry_run:
+				if not doctype.issingle:
+					frappe.db.sql("drop table `tab{0}`".format(doctype.name))
+				frappe.delete_doc("DocType", doctype.name)
+
+		print "removing Module {0}...".format(module_name)
+		if not dry_run:
+			frappe.delete_doc("Module Def", module_name)
+
+	remove_from_installed_apps(app_name)
 
 def post_install(rebuild_website=False):
 	if rebuild_website:
 		render.clear_cache()
 		statics.sync().start()
 
+	init_singles()
 	frappe.db.commit()
 	frappe.clear_cache()
 
@@ -160,6 +200,15 @@ def set_all_patches_as_completed(app):
 			}).insert()
 		frappe.db.commit()
 
+def init_singles():
+	singles = [single['name'] for single in frappe.get_all("DocType", filters={'issingle': True})]
+	for single in singles:
+		if not frappe.db.get_singles_dict(single):
+			doc = frappe.new_doc(single)
+			doc.flags.ignore_mandatory=True
+			doc.flags.ignore_validate=True
+			doc.save()
+
 def make_conf(db_name=None, db_password=None, site_config=None):
 	site = frappe.local.site
 	make_site_config(db_name, db_password, site_config)
@@ -169,7 +218,7 @@ def make_conf(db_name=None, db_password=None, site_config=None):
 
 def make_site_config(db_name=None, db_password=None, site_config=None):
 	frappe.create_folder(os.path.join(frappe.local.site_path))
-	site_file = os.path.join(frappe.local.site_path, "site_config.json")
+	site_file = get_site_config_path()
 
 	if not os.path.exists(site_file):
 		if not (site_config and isinstance(site_config, dict)):
@@ -177,6 +226,34 @@ def make_site_config(db_name=None, db_password=None, site_config=None):
 
 		with open(site_file, "w") as f:
 			f.write(json.dumps(site_config, indent=1, sort_keys=True))
+
+def update_site_config(key, value):
+	"""Update a value in site_config"""
+	with open(get_site_config_path(), "r") as f:
+		site_config = json.loads(f.read())
+
+	# int
+	try:
+		value = int(value)
+	except ValueError:
+		pass
+
+	# boolean
+	if value in ("False", "True"):
+		value = eval(value)
+
+	# remove key if value is None
+	if value == "None":
+		if key in site_config:
+			del site_config[key]
+	else:
+		site_config[key] = value
+
+	with open(get_site_config_path(), "w") as f:
+		f.write(json.dumps(site_config, indent=1, sort_keys=True))
+
+def get_site_config_path():
+	return os.path.join(frappe.local.site_path, "site_config.json")
 
 def get_conf_params(db_name=None, db_password=None):
 	if not db_name:
@@ -195,7 +272,8 @@ def make_site_dirs():
 	site_private_path = os.path.join(frappe.local.site_path, 'private')
 	for dir_path in (
 			os.path.join(site_private_path, 'backups'),
-			os.path.join(site_public_path, 'files')):
+			os.path.join(site_public_path, 'files'),
+			os.path.join(frappe.local.site_path, 'task-logs')):
 		if not os.path.exists(dir_path):
 			os.makedirs(dir_path)
 	locks_dir = frappe.get_site_path('locks')
@@ -208,15 +286,47 @@ def add_module_defs(app):
 		d = frappe.new_doc("Module Def")
 		d.app_name = app
 		d.module_name = module
-		d.save()
+		d.save(ignore_permissions=True)
 
 def remove_missing_apps():
-	apps = ('frappe_subscription',)
-	installed_apps = frappe.get_installed_apps()
+	apps = ('frappe_subscription', 'shopping_cart')
+	installed_apps = json.loads(frappe.db.get_global("installed_apps") or "[]")
 	for app in apps:
 		if app in installed_apps:
 			try:
 				importlib.import_module(app)
+
 			except ImportError:
 				installed_apps.remove(app)
 				frappe.db.set_global("installed_apps", json.dumps(installed_apps))
+
+def check_if_ready_for_barracuda():
+	mariadb_variables = frappe._dict(frappe.db.sql("""show variables"""))
+	for key, value in {
+			"innodb_file_format": "Barracuda",
+			"innodb_file_per_table": "ON",
+			"innodb_large_prefix": "ON",
+			"character_set_server": "utf8mb4",
+			"collation_server": "utf8mb4_unicode_ci"
+		}.items():
+
+		if mariadb_variables.get(key) != value:
+			print "="*80
+			print "Please add this to MariaDB's my.cnf and restart MariaDB before proceeding"
+			print
+			print expected_config_for_barracuda
+			print "="*80
+			sys.exit(1)
+			# raise Exception, "MariaDB needs to be configured!"
+
+expected_config_for_barracuda = """[mysqld]
+innodb-file-format=barracuda
+innodb-file-per-table=1
+innodb-large-prefix=1
+character-set-client-handshake = FALSE
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+[mysql]
+default-character-set = utf8mb4
+"""

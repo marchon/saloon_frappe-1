@@ -1,4 +1,4 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
 // __("Form")
@@ -40,15 +40,17 @@ frappe.ui.Page = Class.extend({
 		if(this.single_column) {
 			// nesting under col-sm-12 for consistency
 			this.add_view("main", '<div class="row layout-main">\
-					<div class="col-sm-12 layout-main-section-wrapper">\
+					<div class="col-md-12 layout-main-section-wrapper">\
 						<div class="layout-main-section"></div>\
+						<div class="layout-footer hide"></div>\
 					</div>\
 				</div>');
 		} else {
 			var main = this.add_view("main", '<div class="row layout-main">\
-				<div class="col-sm-2 layout-side-section"></div>\
-				<div class="col-sm-10 layout-main-section-wrapper">\
+				<div class="col-md-2 layout-side-section"></div>\
+				<div class="col-md-10 layout-main-section-wrapper">\
 					<div class="layout-main-section"></div>\
+					<div class="layout-footer hide"></div>\
 				</div>\
 			</div>');
 		}
@@ -66,8 +68,9 @@ frappe.ui.Page = Class.extend({
 		if(this.icon)
 			this.get_main_icon(this.icon);
 
-		this.main = this.wrapper.find(".layout-main-section");
+		this.body = this.main = this.wrapper.find(".layout-main-section");
 		this.sidebar = this.wrapper.find(".layout-side-section");
+		this.footer = this.wrapper.find(".layout-footer");
 		this.indicator = this.wrapper.find(".indicator");
 
 		this.page_actions = this.wrapper.find(".page-actions");
@@ -82,7 +85,9 @@ frappe.ui.Page = Class.extend({
 		this.actions_btn_group = this.page_actions.find(".actions-btn-group");
 
 		this.page_form = $('<div class="page-form row hide"></div>').prependTo(this.main);
+		this.inner_toolbar = $('<div class="form-inner-toolbar hide"></div>').prependTo(this.main);
 		this.icon_group = this.page_actions.find(".page-icon-group");
+
 	},
 
 	set_indicator: function(label, color) {
@@ -90,7 +95,7 @@ frappe.ui.Page = Class.extend({
 	},
 
 	add_action_icon: function(icon, click) {
-		return $('<a class="text-muted"><i class="'+icon+'"></i></a>')
+		return $('<a class="text-muted no-decoration"><i class="'+icon+'"></i></a>')
 			.appendTo(this.icon_group.removeClass("hide"))
 			.click(click);
 	},
@@ -103,29 +108,53 @@ frappe.ui.Page = Class.extend({
 		return '<i class="visible-xs ' + icon + '"></i><span class="hidden-xs">' + label + '</span>'
 	},
 
-	set_primary_action: function(label, click, icon) {
-		if (icon) {
-			label = this.get_icon_label(icon, label);
+	set_action: function(btn, opts) {
+		if (opts.icon) {
+			opts.label = this.get_icon_label(opts.icon, opts.label);
 		}
 
-		this.btn_primary.removeClass("hide").prop("disabled", false).html(label).on("click", click);
+		this.clear_action_of(btn);
+
+		btn.removeClass("hide").prop("disabled", false).html(opts.label).on("click", opts.click);
+
+		if (opts.working_label) {
+			btn.attr("data-working-label", opts.working_label);
+		}
 	},
 
-	set_secondary_action: function(label, click, icon) {
-		if (icon) {
-			label = this.get_icon_label(icon, label);
-		}
+	set_primary_action: function(label, click, icon, working_label) {
+		this.set_action(this.btn_primary, {
+			label: label,
+			click: click,
+			icon: icon,
+			working_label: working_label
+		});
+	},
 
-		this.btn_secondary.removeClass("hide").prop("disabled", false).html(label).on("click", click);
+	set_secondary_action: function(label, click, icon, working_label) {
+		this.set_action(this.btn_secondary, {
+			label: label,
+			click: click,
+			icon: icon,
+			working_label: working_label
+		});
+	},
+
+	clear_action_of: function(btn) {
+		btn.addClass("hide").unbind("click").removeAttr("data-working-label");
 	},
 
 	clear_primary_action: function() {
-		this.btn_primary.addClass("hide");
+		this.clear_action_of(this.btn_primary);
+	},
+
+	clear_secondary_action: function() {
+		this.clear_action_of(this.btn_secondary);
 	},
 
 	clear_actions: function() {
-		this.btn_primary.addClass("hide").unbind("click");
-		this.btn_secondary.addClass("hide").unbind("click");
+		this.clear_primary_action();
+		this.clear_secondary_action();
 	},
 
 	clear_icons: function() {
@@ -148,6 +177,14 @@ frappe.ui.Page = Class.extend({
 
 	hide_menu: function() {
 		this.menu_btn_group.addClass("hide");
+	},
+
+	show_icon_group: function() {
+		this.icon_group.removeClass("hide");
+	},
+
+	hide_icon_group: function() {
+		this.icon_group.addClass("hide");
 	},
 
 	//--- Actions (workflow) --//
@@ -190,6 +227,30 @@ frappe.ui.Page = Class.extend({
 		return $('<li class="divider"></li>').appendTo(this.menu);
 	},
 
+	add_inner_button: function(label, action) {
+		return $('<button class="btn btn-default btn-xs" style="margin-left: 10px;">'+__(label)+'</btn>')
+			.on("click", action).appendTo(this.inner_toolbar.removeClass("hide"))
+	},
+
+	//-- Sidebar --//
+
+	add_sidebar_item: function(label, action, insert_after, prepend) {
+		var parent = this.sidebar.find(".sidebar-menu.standard-actions");
+		var li = $('<li>');
+		var link = $('<a>').html(label).on("click", action).appendTo(li);
+
+		if(insert_after) {
+			li.insertAfter(parent.find(insert_after));
+		} else {
+			if(prepend) {
+				li.prependTo(parent);
+			} else {
+				li.appendTo(parent);
+			}
+		}
+		return link;
+	},
+
 	//---//
 
 	clear_user_actions: function() {
@@ -202,9 +263,11 @@ frappe.ui.Page = Class.extend({
 	},
 
 	set_title: function(txt, icon) {
+		if(!txt) txt = "";
+
 		// strip icon
 		this.title = txt;
-		document.title = txt.replace(/<[^>]*>/g, "");
+		frappe.utils.set_title(txt.replace(/<[^>]*>/g, ""));
 		if(icon) {
 			txt = '<span class="'+ icon +' text-muted" style="font-size: inherit;"></span> ' + txt;
 		}
@@ -242,17 +305,11 @@ frappe.ui.Page = Class.extend({
 		},
 
 	add_help_button: function(txt) {
-		this.add_icon_btn("2", "icon-question-sign", __("Help"),
-			function() { msgprint($(this).data('help-text'), 'Help'); })
-			.data("help-text", txt);
-	},
-
-	add_icon_btn: function(group, icon, label, click) {
-		return this.iconbar.add_btn(group, icon, label, click);
+		//
 	},
 
 	add_button: function(label, click, icon, is_title) {
-		return this.add_icon_btn("1", icon, __(label), click);
+		//
 	},
 
 	add_dropdown_button: function(parent, label, click, icon) {
@@ -327,6 +384,8 @@ frappe.ui.Page = Class.extend({
 		return this.views[name];
 	},
 	set_view: function(name) {
+		if(this.current_view_name===name)
+			return;
 		this.current_view && this.current_view.toggle(false);
 		this.current_view = this.views[name];
 
@@ -336,3 +395,14 @@ frappe.ui.Page = Class.extend({
 		this.views[name].toggle(true);
 	}
 });
+
+frappe.ui.scroll = function(element, animate, additional_offset) {
+	var header_offset = $(".navbar").height() + $(".page-head").height();
+	var top = $(element).offset().top - header_offset - cint(additional_offset);
+	if (animate) {
+		$("html, body").animate({ scrollTop: top });
+	} else {
+		$(window).scrollTop(top);
+	}
+
+};

@@ -1,16 +1,14 @@
-// Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
+frappe.provide("frappe.ui.toolbar");
 
 frappe.ui.toolbar.Toolbar = Class.extend({
 	init: function() {
 		var header = $('header').append(frappe.render_template("navbar", {}));
-		var sidebar = $('.offcanvas .sidebar-left').append(frappe.render_template("left_sidebar", {}));
+		var sidebar = $('.offcanvas .sidebar-left').append(frappe.render_template("offcanvas_left_sidebar", {}));
 
-		header.find(".toggle-sidebar").on("click", function() {
-			$(".offcanvas").toggleClass("active-left").removeClass("active-right");
-			return false;
-		});
+		header.find(".toggle-sidebar").on("click", frappe.ui.toolbar.toggle_left_sidebar);
 
 		header.find(".toggle-navbar-new-comments").on("click", function() {
 			$(".offcanvas").toggleClass("active-right").removeClass("active-left");
@@ -59,6 +57,10 @@ $.extend(frappe.ui.toolbar, {
 
 		$('<li class="divider custom-menu"></li>').prependTo(menu);
 	},
+	toggle_left_sidebar: function() {
+		$(".offcanvas").toggleClass("active-left").removeClass("active-right");
+		return false;
+	}
 })
 
 frappe.ui.toolbar.update_notifications = function() {
@@ -69,12 +71,10 @@ frappe.ui.toolbar.update_notifications = function() {
 	var navbar_notification = $("#navbar-notification").empty();
 	var sidebar_notification = $("#sidebar-notification").empty();
 
-
-
 	$.each(modules, function(i, module) {
 		var count = frappe.boot.notification_info.open_count_module[module];
 		if(count) {
-			var notification_row = repl('<li><a data-module="%(data_module)s">\
+			var notification_row = repl('<li><a class="badge-hover" data-module="%(data_module)s">\
 				<span class="badge pull-right">\
 					%(count)s</span> \
 				%(module)s </a></li>', {
@@ -100,7 +100,7 @@ frappe.ui.toolbar.update_notifications = function() {
 	$.each(doctypes, function(i, doctype) {
 		var count = frappe.boot.notification_info.open_count_doctype[doctype];
 		if(count) {
-			var notification_row = repl('<li><a data-doctype="%(data_doctype)s">\
+			var notification_row = repl('<li><a class="badge-hover" data-doctype="%(data_doctype)s">\
 				<span class="badge pull-right">\
 					%(count)s</span> \
 				%(doctype)s </a></li>', {
@@ -136,11 +136,11 @@ frappe.ui.toolbar.update_notifications = function() {
 }
 
 frappe.ui.toolbar.clear_cache = function() {
-	localStorage && localStorage.clear();
+	frappe.assets.clear_local_storage();
 	$c('frappe.sessions.clear',{},function(r,rt){
 		if(!r.exc) {
 			show_alert(r.message);
-			location.reload();
+			location.reload(true);
 		}
 	});
 	return false;
@@ -159,4 +159,18 @@ frappe.ui.toolbar.show_about = function() {
 		console.log(e);
 	}
 	return false;
+}
+
+frappe.views.show_open_count_list = function(element) {
+	var doctype = $(element).attr("data-doctype");
+	var condition = frappe.boot.notification_info.conditions[doctype];
+	if(condition) {
+		frappe.route_options = condition;
+		var route = frappe.get_route();
+		if(route[0]==="List" && route[1]===doctype) {
+			frappe.pages["List/" + doctype].doclistview.refresh();
+		} else {
+			frappe.set_route("List", doctype);
+		}
+	}
 }

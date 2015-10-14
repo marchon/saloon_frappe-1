@@ -1,9 +1,5 @@
 @import "variables.less";
 
-.module-section {
-	margin-bottom: 15px;
-}
-
 .module-item {
 	margin: 0px;
 	padding: 7px;
@@ -39,10 +35,6 @@
 	display: block !important;
 }
 
-.module-sidebar-nav {
-	margin-right: -15px;
-}
-
 .module-item-progress {
 	margin-bottom: 10px;
 	height: 17px;
@@ -58,4 +50,20 @@
 	height: 7px;
 	background-color: red;
 	width: 0px;
+}
+
+@media(max-width: 767px) {
+	body[data-route^="Module"] {
+		.page-title {
+			width: 100%;
+		}
+
+		.page-actions {
+			display: none !important;
+		}
+
+		.layout-main-section {
+			border-bottom: 0px;
+		}
+	}
 }

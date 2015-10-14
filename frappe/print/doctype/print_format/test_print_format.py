@@ -1,5 +1,6 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # See license.txt
+from __future__ import unicode_literals
 
 import frappe
 import unittest
@@ -9,9 +10,9 @@ test_records = frappe.get_test_records('Print Format')
 
 class TestPrintFormat(unittest.TestCase):
 	def test_print_user(self, style=None):
-		print_html = frappe.get_print_format("User", "Administrator", style=style)
+		print_html = frappe.get_print("User", "Administrator", style=style)
 		self.assertTrue("<label>First Name</label>" in print_html)
-		self.assertTrue(re.findall('<div class="col-xs-7[\s]*">[\s]*Administrator[\s]*</div>', print_html))
+		self.assertTrue(re.findall('<div class="col-xs-7[^"]*">[\s]*Administrator[\s]*</div>', print_html))
 		return print_html
 
 	def test_print_user_standard(self):

@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -13,11 +13,8 @@ from frappe import _
 def get():
 	return compress(execute(**get_form_params()))
 
-def execute(doctype, query=None, filters=None, fields=None, or_filters=None, docstatus=None,
-		group_by=None, order_by=None, limit_start=0, limit_page_length=20,
-		as_list=False, with_childnames=False, debug=False):
-	return DatabaseQuery(doctype).execute(query, filters, fields, or_filters, docstatus, group_by,
-		order_by, limit_start, limit_page_length, as_list, with_childnames, debug)
+def execute(doctype, *args, **kwargs):
+	return DatabaseQuery(doctype).execute(*args, **kwargs)
 
 def get_form_params():
 	"""Stringify GET request parameters."""
@@ -86,7 +83,7 @@ def export_query():
 	db_query = DatabaseQuery(doctype)
 	ret = db_query.execute(**form_params)
 
-	data = [['Sr'] + get_labels(db_query.fields)]
+	data = [['Sr'] + get_labels(db_query.fields, doctype)]
 	for i, row in enumerate(ret):
 		data.append([i+1] + list(row))
 
@@ -105,13 +102,20 @@ def export_query():
 	frappe.response['type'] = 'csv'
 	frappe.response['doctype'] = doctype
 
-def get_labels(fields):
+def get_labels(fields, doctype):
 	"""get column labels based on column names"""
 	labels = []
 	for key in fields:
 		key = key.split(" as ")[0]
-		doctype, fieldname = key.split(".")[0][4:-1], key.split(".")[1]
-		label = frappe.get_meta(doctype).get_label(fieldname) or fieldname.title()
+
+		if "." in key:
+			parenttype, fieldname = key.split(".")[0][4:-1], key.split(".")[1].strip("`")
+		else:
+			parenttype = doctype
+			fieldname = fieldname.strip("`")
+
+		df = frappe.get_meta(parenttype).get_field(fieldname)
+		label = df.label if df else fieldname.title()
 		if label in labels:
 			label = doctype + ": " + label
 		labels.append(label)
@@ -140,7 +144,7 @@ def get_stats(stats, doctype):
 	for tag in tags:
 		if not tag in columns: continue
 		tagcount = execute(doctype, fields=[tag, "count(*)"],
-			filters=["ifnull(%s,'')!=''" % tag], group_by=tag, as_list=True)
+			filters=["ifnull(`%s`,'')!=''" % tag], group_by=tag, as_list=True)
 
 		if tag=='_user_tags':
 			stats[tag] = scrub_user_tags(tagcount)

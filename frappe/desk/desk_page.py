@@ -1,4 +1,4 @@
-# Copyright (c) 2013, Web Notes Technologies Pvt. Ltd. and Contributors
+# Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
@@ -11,7 +11,7 @@ def get(name):
 	   Return the :term:`doclist` of the `Page` specified by `name`
 	"""
 	page = frappe.get_doc('Page', name)
-	if has_permission(page):
+	if page.is_permitted():
 		page.load_assets()
 		return page
 	else:
@@ -34,7 +34,7 @@ def getpage():
 	frappe.response.docs.append(doc)
 
 def has_permission(page):
-	if frappe.user.name == "Administrator" or "System Manager" in frappe.user.get_roles():
+	if frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles():
 		return True
 
 	page_roles = [d.role for d in page.get("roles")]

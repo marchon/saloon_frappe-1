@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from frappe import _
 
 def get_data():
@@ -74,8 +75,8 @@ def get_data():
 				},
 				{
 					"type": "doctype",
-					"name": "Social Login Keys",
-					"description": _("Enter keys to enable login via Facebook, Google, GitHub."),
+					"name": "Website Theme",
+					"description": _("List of themes for Website."),
 				}
 			]
 		},
