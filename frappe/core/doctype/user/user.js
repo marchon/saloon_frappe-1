@@ -1,5 +1,5 @@
 cur_frm.cscript.onload = function(doc, dt, dn) {
-	if(has_common(user_roles, ["Administrator", "System Manager"])) {
+	if(has_common(user_roles, ["Administrator", "System Manager","Admin"])) {
 		if(!cur_frm.roles_editor) {
 			var role_area = $('<div style="min-height: 300px">')
 				.appendTo(cur_frm.fields_dict.roles_html.wrapper);
@@ -56,7 +56,7 @@ cur_frm.cscript.refresh = function(doc) {
 			frappe.set_route("user-permissions");
 		}, null, "btn-default")
 
-		if(has_common(user_roles, ["Administrator", "System Manager"])) {
+		if(has_common(user_roles, ["Administrator", "System Manager" ,"Admin" ])) {
 			cur_frm.toggle_display(['sb1', 'sb3', 'modules_access'], true);
 		}
 		cur_frm.cscript.enabled(doc);
@@ -74,7 +74,7 @@ cur_frm.cscript.refresh = function(doc) {
 }
 
 cur_frm.cscript.enabled = function(doc) {
-	if(!doc.__islocal && has_common(user_roles, ["Administrator", "System Manager"])) {
+	if(!doc.__islocal && has_common(user_roles, ["Administrator", "System Manager" ,"Admin"])) {
 		cur_frm.toggle_display(['sb1', 'sb3', 'modules_access'], doc.enabled);
 		cur_frm.toggle_enable('*', doc.enabled);
 		cur_frm.set_df_property('enabled', 'read_only', 0);
@@ -133,11 +133,11 @@ frappe.RoleEditor = Class.extend({
 		this.wrapper = wrapper;
 		$(wrapper).html('<div class="help">' + __("Loading") + '...</div>')
 		return frappe.call({
-			method: 'frappe.core.doctype.user.user.get_all_roles',
+			method: 'frappe.core.doctype.user.user.get_all_roles_saloon',
 			callback: function(r) {
 				me.roles = r.message;
 				me.show_roles();
-
+             
 				// refresh call could've already happened
 				// when all role checkboxes weren't created
 				if(cur_frm.doc) {
@@ -172,14 +172,31 @@ frappe.RoleEditor = Class.extend({
 			});
 		});
 
+		if (has_common(user_roles, ['Administrator','System Manager'])){
+			$(me.wrapper).append(repl('<div class="user-role" \
+					data-user-role="%(role_value)s">\
+					<input type="checkbox" style="margin-top:0px;"> \
+					<a href="#" class="grey">%(role_display)s</a>\
+				</div>', {role_value: "Admin",role_display:__("Admin")}));
+			$(me.wrapper).append(repl('<div class="user-role" \
+					data-user-role="%(role_value)s">\
+					<input type="checkbox" style="margin-top:0px;"> \
+					<a href="#" class="grey">%(role_display)s</a>\
+				</div>', {role_value: "System Manager",role_display:__("System Manager")}));
+   
+        }
+		
 		$.each(this.roles, function(i, role) {
+
 			$(me.wrapper).append(repl('<div class="user-role" \
 				data-user-role="%(role_value)s">\
 				<input type="checkbox" style="margin-top:0px;"> \
 				<a href="#" class="grey">%(role_display)s</a>\
-			</div>', {role_value: role,role_display:__(role)}));
+			</div>', {role_value: role,role_display:__(role)}));		   
 		});
 
+		
+  
 		$(this.wrapper).find('input[type="checkbox"]').change(function() {
 			cur_frm.dirty();
 		});

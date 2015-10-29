@@ -32,6 +32,16 @@ class User(Document):
 
 		if self.name not in STANDARD_USERS:
 			self.validate_email_type(self.email)
+
+		role= frappe.db.sql("select  u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and u.name='%s'" %(frappe.session.user))
+
+		if self.get("__islocal") and role :
+			count=frappe.db.sql("select count(name) from tabUser where owner='%s'"%(frappe.session.user),as_list=1)
+			if count and count[0][0] <=3 :
+				frappe.msgprint(frappe.session.user)
+			else:
+				frappe.throw(_("You can create only '4' users and you have created '{0}' users.").format(count[0][0]))
+		
 		self.add_system_manager_role()
 		self.validate_system_manager_user_type()
 		self.check_enable_disable()
@@ -86,6 +96,22 @@ class User(Document):
 		clear_notifications(user=self.name)
 		frappe.clear_cache(user=self.name)
 		self.send_password_notifcation(self.__new_password)
+		self.set_userperm_company()
+
+	def set_userperm_company(self):
+		defval = frappe.db.sql("""select defvalue from `tabDefaultValue` where parent = '%s' and defkey='Company'"""
+			%(self.name),as_list=1)
+		if defval:
+			frappe.db.sql("""update `tabDefaultValue` set defvalue = '%s' where parent = '%s' and defkey='Company'"""
+			%(self.company,self.name))
+		else:
+			d = frappe.new_doc("DefaultValue")
+			d.parentfield = 'system_defaults'
+			d.parenttype = 'User Permission'
+			d.parent = self.email
+			d.defkey = 'Company'
+			d.defvalue = self.company 
+			d.insert()
 
 	def share_with_self(self):
 		if self.user_type=="System User":
@@ -312,6 +338,13 @@ def get_all_roles(arg=None):
 	"""return all roles"""
 	return [r[0] for r in frappe.db.sql("""select name from tabRole
 		where name not in ('Administrator', 'Guest', 'All') order by name""")]
+
+@frappe.whitelist()
+def get_all_roles_saloon(arg=None):
+	"""return all roles"""
+	return [r[0] for r in frappe.db.sql("""select name from tabRole
+		where name not in ('Stock Manager','Stock User','Newsletter Manager','Analytics','Material Master Manager','Maintenance Manager','Maintenance User','Projects Manager','Projects User','Manufacturing User','HR Manager','HR User','Manufacturing Manager','Material Manager','Quality Manager','Material User','Purchase User','Auditor','Sales Master Manager','Purchase Master Manager','Purchase Manager','Accounts Manager','Accounts User','Blogger','Website Manager','Support Team','Sales Manager','Support Manager','Sales User','Report Manager','All','Guest','Admin','System Manager') order by name""")]
+
 
 @frappe.whitelist()
 def get_user_roles(arg=None):
