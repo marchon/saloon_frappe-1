@@ -3,7 +3,7 @@
 
 from __future__ import unicode_literals
 import frappe
-from frappe.utils import cint, get_gravatar, format_datetime, now_datetime
+from frappe.utils import cint, cstr, get_gravatar, format_datetime, now_datetime
 from frappe import throw, msgprint, _
 from frappe.auth import _update_password
 from frappe.desk.notifications import clear_notifications
@@ -33,16 +33,17 @@ class User(Document):
 		if self.name not in STANDARD_USERS:
 			self.validate_email_type(self.email)
 
-		role= frappe.db.sql("select  u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and u.name='%s'" %(frappe.session.user))
+		role = frappe.db.sql("select  u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and u.name='%s'" %(frappe.session.user))
 
 		if self.get("__islocal") and role :
 			count=frappe.db.sql("select count(name) from tabUser where owner='%s'"%(frappe.session.user),as_list=1)
 			if count and count[0][0] <=3 :
-				frappe.msgprint(frappe.session.user)
+				pass
 			else:
-				frappe.throw(_("You can create only '4' users and you have created '{0}' users.").format(count[0][0]))
+				frappe.throw(_("You can create only '4' users and you have already created '{0}' users.").format(count[0][0]))
 		
 		self.add_system_manager_role()
+		self.validate_user_company()
 		self.validate_system_manager_user_type()
 		self.check_enable_disable()
 		self.update_gravatar()
@@ -99,8 +100,9 @@ class User(Document):
 		self.set_userperm_company()
 
 	def set_userperm_company(self):
+		# if self.get("__islocal"):
 		defval = frappe.db.sql("""select defvalue from `tabDefaultValue` where parent = '%s' and defkey='Company'"""
-			%(self.name),as_list=1)
+			%(self.email),as_list=1)
 		if defval:
 			frappe.db.sql("""update `tabDefaultValue` set defvalue = '%s' where parent = '%s' and defkey='Company'"""
 			%(self.company,self.name))
@@ -112,6 +114,14 @@ class User(Document):
 			d.defkey = 'Company'
 			d.defvalue = self.company 
 			d.insert()
+
+	def validate_user_company(self):
+		if self.get("__islocal"):
+			user = frappe.db.sql("""select u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and 
+				u.company='%s'"""%(self.company),as_list=1)
+			frappe.errprint(user)
+			if user:
+				frappe.throw(_("Admin '{0}' is already created for company '{1}',you cannot create two admin users for one company !").format(user[0][0],self.company))
 
 	def share_with_self(self):
 		if self.user_type=="System User":
@@ -451,6 +461,8 @@ def get_total_users(exclude_users=None):
 	return len(get_system_users(exclude_users=exclude_users))
 
 def get_system_users(exclude_users=None):
+	# frappe.errprint("users")
+	company = frappe.db.sql("""select company from `tabUser` where name = '%s'"""%(frappe.session.user),as_list=1)
 	if not exclude_users:
 		exclude_users = []
 	elif not isinstance(exclude_users, (list, tuple)):
@@ -458,11 +470,17 @@ def get_system_users(exclude_users=None):
 
 	exclude_users += list(STANDARD_USERS)
 
-	system_users = frappe.db.sql_list("""select name from `tabUser`
-		where enabled=1 and user_type != 'Website User'
-		and name not in ({})""".format(", ".join(["%s"]*len(exclude_users))),
-		exclude_users)
-
+	if frappe.session.user=='Administrator':
+		system_users = frappe.db.sql_list("""select name from `tabUser`
+			where enabled=1 and user_type != 'Website User'
+			and name not in ({})""".format(", ".join(["%s"]*len(exclude_users))),
+			exclude_users)
+	else:
+		system_users = frappe.db.sql_list("""select name from `tabUser`
+			where enabled=1 and user_type != 'Website User' and company = '{0}'
+			and name not in ({1})""".format(company[0][0], ", ".join(["%s"]*len(exclude_users))),
+			exclude_users)
+	# frappe.errprint(system_users)
 	return system_users
 
 def get_active_users():

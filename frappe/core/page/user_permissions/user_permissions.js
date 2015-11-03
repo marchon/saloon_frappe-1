@@ -48,6 +48,8 @@ frappe.UserPermissions = Class.extend({
 	},
 	make: function() {
 		var me = this;
+		// var company = $("input[data-fieldname = company]").val();
+		// console.log(company)
 
 		$(this.wrapper).find(".view-role-permissions").on("click", function() {
 				frappe.route_options = { doctype: me.get_doctype() || "" };
