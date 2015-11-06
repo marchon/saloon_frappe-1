@@ -17,7 +17,17 @@ def add_user_default(key, value, user=None, parenttype=None):
 	add_default(key, value, user or frappe.session.user, parenttype)
 
 def get_user_default(key, user=None):
+	frappe.errprint(key)
+	frappe.errprint(user)
 	d = get_defaults(user or frappe.session.user).get(key, None)
+	frappe.errprint(d)
+	return isinstance(d, list) and d[0] or d
+
+def get_user_default_saloon(key, user=None):
+	frappe.errprint(key)
+	frappe.errprint(user)
+	d = get_defaults(user or frappe.session.user).get(key, None)
+	frappe.errprint(d)
 	return isinstance(d, list) and d[0] or d
 
 def get_user_default_as_list(key, user=None):

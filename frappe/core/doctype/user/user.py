@@ -43,7 +43,8 @@ class User(Document):
 				frappe.throw(_("You can create only '4' users and you have already created '{0}' users.").format(count[0][0]))
 		
 		self.add_system_manager_role()
-		self.validate_user_company()
+		self.set_userperm_company()
+		# self.validate_user_company()
 		self.validate_system_manager_user_type()
 		self.check_enable_disable()
 		self.update_gravatar()
@@ -97,15 +98,16 @@ class User(Document):
 		clear_notifications(user=self.name)
 		frappe.clear_cache(user=self.name)
 		self.send_password_notifcation(self.__new_password)
-		self.set_userperm_company()
+		# self.set_userperm_company()
 
 	def set_userperm_company(self):
 		# if self.get("__islocal"):
 		defval = frappe.db.sql("""select defvalue from `tabDefaultValue` where parent = '%s' and defkey='Company'"""
 			%(self.email),as_list=1)
 		if defval:
-			frappe.db.sql("""update `tabDefaultValue` set defvalue = '%s' where parent = '%s' and defkey='Company'"""
-			%(self.company,self.name))
+			pass
+			# frappe.db.sql("""update `tabDefaultValue` set defvalue = '%s' where parent = '%s' and defkey='Company'"""
+			# %(self.company,self.name))
 		else:
 			d = frappe.new_doc("DefaultValue")
 			d.parentfield = 'system_defaults'
@@ -117,7 +119,7 @@ class User(Document):
 
 	def validate_user_company(self):
 		if self.get("__islocal"):
-			user = frappe.db.sql("""select u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and 
+			user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and 
 				u.company='%s'"""%(self.company),as_list=1)
 			frappe.errprint(user)
 			if user:

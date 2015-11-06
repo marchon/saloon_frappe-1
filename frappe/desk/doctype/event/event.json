@@ -635,7 +635,7 @@
  "is_submittable": 0, 
  "issingle": 0, 
  "istable": 0, 
- "modified": "2015-10-29 15:25:48.684700", 
+ "modified": "2015-11-04 12:16:31.886553", 
  "modified_by": "Administrator", 
  "module": "Desk", 
  "name": "Event", 
@@ -699,6 +699,7 @@
    "set_user_permissions": 0, 
    "share": 0, 
    "submit": 0, 
+   "user_permission_doctypes": "[\"Company\"]", 
    "write": 0
   }, 
   {
