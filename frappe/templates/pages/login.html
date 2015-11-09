@@ -3,7 +3,7 @@
 {% block content %}
 <!-- no-header -->
 <!-- no-sidebar -->
-<div class="login-content" style="padding-top: 30px; padding-bottom:15px">
+<div class="login-content" style="margin-left:100px; padding-top: 180px; padding-bottom:15px; background-image: url(../files/vlinkuu.jpg); height: 700px; width:910px;background-repeat:no-repeat ">
 	<form class="form-signin form-login" role="form">
 		{%- if social_login -%}
 		<h4 class="form-signin-heading text-center">{{ _("Sign in using") }}</h4>
@@ -58,7 +58,7 @@
 
 	</form>
 
-	<form class="form-signin form-forgot hide" role="form">
+	<form class="form-signin form-forgot hide" role="form" >
 		<input type="email" id="forgot_email"
 			class="form-control" placeholder="{{ _('Email Id') }}" required autofocus>
 		<br>

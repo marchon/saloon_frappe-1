@@ -6,11 +6,11 @@
  "doctype": "Website Theme", 
  "font_size": "14px", 
  "heading_style": "", 
- "modified": "2015-02-19 20:01:19.478005", 
+ "modified": "2015-11-09 11:43:14.525217", 
  "modified_by": "Administrator", 
  "module": "Website", 
  "name": "Standard", 
+ "no_sidebar": 0, 
  "owner": "Administrator", 
- "theme": "Standard", 
- "website_theme_templates": []
+ "theme": "Standard"
 }

@@ -54,12 +54,12 @@ def get_data():
 			"link": "List/File",
 			"type": "list"
 		},
-		# "Website": {
-		# 	"color": "#16a085",
-		# 	"icon": "icon-globe",
-		# 	"icon": "octicon octicon-globe",
-		# 	"type": "module"
-		# },
+		"Website": {
+			"color": "#16a085",
+			"icon": "icon-globe",
+			"icon": "octicon octicon-globe",
+			"type": "module"
+		},
 		"Installer": {
 			"color": "#5ac8fb",
 			"icon": "icon-download",
