@@ -9,13 +9,13 @@ def execute():
 
 	if not frappe.db.exists("File", {"is_home_folder": 1}):
 		make_home_folder()
-
 	# make missing folders and set parent folder
 	for file in frappe.get_all("File", filters={"is_folder": 0}):
 		file = frappe.get_doc("File", file.name)
 		file.flags.ignore_folder_validate = True
 		file.flags.ignore_duplicate_entry_error = True
 		file.flags.ignore_links = True
+		file.flags.dont_update_tree = True
 		file.set_folder_name()
 		file.save()
 

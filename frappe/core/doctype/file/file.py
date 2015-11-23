@@ -56,6 +56,10 @@ class File(NestedSet):
 		self.validate_duplicate_entry()
 		self.validate_folder()
 		self.set_folder_size()
+	def on_update(self):
+		if not self.flags.dont_update_tree:
+			super(File, self).on_update()
+
 
 	def set_folder_size(self):
 		"""Set folder size if folder"""
@@ -108,7 +112,10 @@ class File(NestedSet):
 			frappe.throw(_("Cannot delete Home and Attachments folders"))
 		self.check_folder_is_empty()
 		self.check_reference_doc_permission()
-		super(File, self).on_trash()
+
+		if not self.flags.dont_update_tree:
+			super(File, self).on_trash()
+		
 		self.delete_file()
 
 	def after_delete(self):
