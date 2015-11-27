@@ -34,34 +34,34 @@ class User(Document):
 			self.validate_email_type(self.email)
         #gangadhar for install
 		#Admin creation validation for one company
-		# user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and 
-		# 	u.company='%s'"""%(self.company),as_list=1)
-		# if user and ("Admin" in [user_role.role for user_role in self.get("user_roles")]):
-		# 	if user[0][0]!=self.name:
-		# 		frappe.throw(_("Admin '{0}' is already created for company '{1}',you cannot create two admin users for one company !").format(user[0][0],self.company))
+		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and 
+			u.company='%s'"""%(self.company),as_list=1)
+		if user and ("Admin" in [user_role.role for user_role in self.get("user_roles")]):
+			if user[0][0]!=self.name:
+				frappe.throw(_("Admin '{0}' is already created for company '{1}',you cannot create two admin users for one company !").format(user[0][0],self.company))
 
-		# #Superadmin creation validation for company
-		# superadmin = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Administrator'""",as_list=1)
-		# if superadmin and ("Administrator" in [user_role.role for user_role in self.get("user_roles")]):
-		# 	if superadmin[0][0]!=self.name:
-		# 		frappe.throw(_("SuperAdmin is already created,you cannot create new superadmin !").format(superadmin[0][0],self.company))
+		#Superadmin creation validation for company
+		superadmin = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Administrator'""",as_list=1)
+		if superadmin and ("Administrator" in [user_role.role for user_role in self.get("user_roles")]):
+			if superadmin[0][0]!=self.name:
+				frappe.throw(_("SuperAdmin is already created,you cannot create new superadmin !").format(superadmin[0][0],self.company))
 
 
-		# #Validation for user creation companywise
-		# role = frappe.db.sql("select  u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and u.name='%s'" %(frappe.session.user))
+		#Validation for user creation companywise
+		role = frappe.db.sql("select  u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and u.name='%s'" %(frappe.session.user))
 
-		# if self.get("__islocal") and role :
-		# 	count=frappe.db.sql("select count(name) from tabUser where owner='%s'"%(frappe.session.user),as_list=1)
-		# 	if count and count[0][0] <=3 :
-		# 		pass
-		# 	else:
-		# 		frappe.throw(_("You can create only '4' users and you have already created '{0}' users.").format(count[0][0]))
+		if self.get("__islocal") and role :
+			count=frappe.db.sql("select count(name) from tabUser where owner='%s'"%(frappe.session.user),as_list=1)
+			if count and count[0][0] <=3 :
+				pass
+			else:
+				frappe.throw(_("You can create only '4' users and you have already created '{0}' users.").format(count[0][0]))
 		
 		self.add_system_manager_role()
 		# gangadhar
-		#self.set_userperm_company()
+		self.set_userperm_company()
 
-		#self.validate_user_company()
+		self.validate_user_company()
 		self.validate_system_manager_user_type()
 		self.check_enable_disable()
 		self.update_gravatar()
