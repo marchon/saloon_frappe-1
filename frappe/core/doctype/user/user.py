@@ -32,20 +32,13 @@ class User(Document):
 
 		if self.name not in STANDARD_USERS:
 			self.validate_email_type(self.email)
-        	#gangadhar for install
-		#Admin creation validation for one company
-		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and u.company='%s'"""%(self.company),as_list=1,debug=1)
-		frappe.errprint(user)
-		if user and ("Admin" in [user_role.role for user_role in self.get("user_roles")]):
-			frappe.errprint(self.get("user_roles"))
-			if user[0][0]!=self.name:
-				frappe.throw(_("Admin '{0}' is already created for company '{1}',you cannot create two admin users for one company !").format(user[0][0],self.company))
-
+        #gangadhar for install
+		
 		#Superadmin creation validation for company
-		superadmin = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Administrator'""",as_list=1)
-		if superadmin and ("Administrator" in [user_role.role for user_role in self.get("user_roles")]):
-			if superadmin[0][0]!=self.name:
-				frappe.throw(_("SuperAdmin is already created,you cannot create new superadmin !").format(superadmin[0][0],self.company))
+		# superadmin = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Administrator'""",as_list=1)
+		# if superadmin and ("Administrator" in [user_role.role for user_role in self.get("user_roles")]):
+		# 	if superadmin[0][0]!=self.name:
+		# 		frappe.throw(_("SuperAdmin is already created,you cannot create new superadmin !").format(superadmin[0][0],self.company))
 
 
 		#Validation for user creation companywise
@@ -62,7 +55,7 @@ class User(Document):
 		# gangadhar
 		self.set_userperm_company()
 
-		self.validate_user_company()
+		self.validate_userrole_admin()
 		self.validate_system_manager_user_type()
 		self.check_enable_disable()
 		self.update_gravatar()
@@ -135,12 +128,11 @@ class User(Document):
 			d.defvalue = self.company 
 			d.insert()
 
-	def validate_user_company(self):
-		if self.get("__islocal"):
-			user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and 
-				u.company='%s'"""%(self.company),as_list=1)
-			frappe.errprint(user)
-			if user:
+	def validate_userrole_admin(self):
+		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and 
+			u.company='%s'"""%(self.company),as_list=1)
+		if user and frappe.session.user=='Administrator' and ("Admin" in [user_role.role for user_role in self.get("user_roles")]):
+			if user[0][0]!=self.name:
 				frappe.throw(_("Admin '{0}' is already created for company '{1}',you cannot create two admin users for one company !").format(user[0][0],self.company))
 
 	def share_with_self(self):
@@ -375,7 +367,7 @@ def get_all_roles(arg=None):
 def get_all_roles_saloon(arg=None):
 	"""return all roles"""
 	return [r[0] for r in frappe.db.sql("""select name from tabRole
-		where name not in ('Stock Manager','Stock User','Newsletter Manager','Analytics','Material Master Manager','Maintenance Manager','Maintenance User','Projects Manager','Projects User','Manufacturing User','HR Manager','HR User','Manufacturing Manager','Material Manager','Quality Manager','Material User','Purchase User','Auditor','Sales Master Manager','Purchase Master Manager','Purchase Manager','Accounts Manager','Accounts User','Blogger','Website Manager','Support Team','Sales Manager','Support Manager','Sales User','Report Manager','All','Guest','Admin','System Manager') order by name""")]
+		where name not in ('Stock Manager','Stock User','Newsletter Manager','Analytics','Material Master Manager','Maintenance Manager','Maintenance User','Projects Manager','Projects User','Manufacturing User','HR Manager','HR User','Manufacturing Manager','Material Manager','Quality Manager','Material User','Purchase User','Auditor','Sales Master Manager','Purchase Master Manager','Purchase Manager','Accounts Manager','Accounts User','Blogger','Website Manager','Support Team','Sales Manager','Support Manager','Sales User','Report Manager','All','Guest','Admin','Administrator','System Manager') order by name""")]
 
 
 @frappe.whitelist()
