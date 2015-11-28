@@ -32,11 +32,12 @@ class User(Document):
 
 		if self.name not in STANDARD_USERS:
 			self.validate_email_type(self.email)
-        #gangadhar for install
+        	#gangadhar for install
 		#Admin creation validation for one company
-		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and 
-			u.company='%s'"""%(self.company),as_list=1)
+		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and u.company='%s'"""%(self.company),as_list=1,debug=1)
+		frappe.errprint(user)
 		if user and ("Admin" in [user_role.role for user_role in self.get("user_roles")]):
+			frappe.errprint(self.get("user_roles"))
 			if user[0][0]!=self.name:
 				frappe.throw(_("Admin '{0}' is already created for company '{1}',you cannot create two admin users for one company !").format(user[0][0],self.company))
 
