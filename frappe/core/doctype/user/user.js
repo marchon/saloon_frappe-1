@@ -5,12 +5,19 @@ cur_frm.cscript.onload = function(doc, dt, dn) {
 				.appendTo(cur_frm.fields_dict.roles_html.wrapper);
 			cur_frm.roles_editor = new frappe.RoleEditor(role_area);
 
-			var module_area = $('<div style="min-height: 300px">')
+			var module_area = $('<div style="min-height: 190px">')
 				.appendTo(cur_frm.fields_dict.modules_html.wrapper);
 			cur_frm.module_editor = new frappe.ModuleEditor(cur_frm, module_area)
 		} else {
 			cur_frm.roles_editor.show();
 		}
+	}
+
+	if(has_common(user_roles, ["Administrator", "System Manager"])) {
+		cur_frm.toggle_display(['modules_access','modules_html'], true);
+	}
+	else{
+		cur_frm.toggle_display(['modules_access','modules_html'], false);
 	}
 }
 
@@ -99,7 +106,9 @@ frappe.ModuleEditor = Class.extend({
 	},
 	make: function() {
 		var me = this;
-		$.each(keys(frappe.boot.modules), function(i, m) {
+		module_list = ["Accounts", "Buying", "CRM", "Calendar", "HR", "Installer", "POS", "Selling","Stock", "To Do"]
+		//$.each(keys(frappe.boot.modules), function(i, m) {
+		$.each(module_list, function(i, m) {
 			// TODO: add checkbox
 			$(repl('<div class="col-sm-6"><div class="checkbox">\
 				<label><input type="checkbox" class="block-module-check" data-module="%(module)s">\

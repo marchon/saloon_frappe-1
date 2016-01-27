@@ -74,6 +74,11 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 			}
 		});
 
+		this.page.add_menu_item(__("All Employee"), function() {
+			$("[data-fieldname = employee]").val("");
+			me.refresh();
+		});
+
 		this.page.page_actions.find(".menu-btn-group-label").text(__("Type"));
 
 		$(this.parent).on("show", function() {
@@ -141,6 +146,18 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 		},
 		"": {
 			"color": "#F0F4F7"
+		},
+		"open": {
+			"color": "#2E64FE"
+		},
+		"confirm": {
+			"color": "#F7FE2E"
+		},
+		"cancel": {
+			"color": "#FE2E2E"
+		},
+		"completed": {
+			"color": "#04B404"
 		}
 	},
 	get_system_datetime: function(date) {

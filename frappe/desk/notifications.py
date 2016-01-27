@@ -69,6 +69,9 @@ def get_notifications_for_doctypes(config, notification_count):
 		if d in can_read:
 			condition = config.for_doctype[d]
 
+			if d=='Appointment':
+				frappe.errprint(['condition in desk _notification',type(condition)])
+
 			if d in notification_count:
 				open_count_doctype[d] = notification_count[d]
 			else:
