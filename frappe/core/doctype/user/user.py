@@ -53,7 +53,7 @@ class User(Document):
 		
 		self.add_system_manager_role()
 		# gangadhar
-		self.set_userperm_company()
+		# self.set_userperm_company()
 
 		self.validate_userrole_admin()
 		self.validate_system_manager_user_type()
@@ -129,11 +129,10 @@ class User(Document):
 			d.insert()
 
 	def validate_userrole_admin(self):
-		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin' and 
-			u.company='%s'"""%(self.company),as_list=1)
+		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin'""",as_list=1)
 		if user and frappe.session.user=='Administrator' and ("Admin" in [user_role.role for user_role in self.get("user_roles")]):
 			if user[0][0]!=self.name:
-				frappe.throw(_("Admin '{0}' is already created for company '{1}',you cannot create two admin users for one company !").format(user[0][0],self.company))
+				frappe.throw(_("Admin '{0}' is already created, you cannot create two admin users for one company !").format(user[0][0]))
 
 	def share_with_self(self):
 		if self.user_type=="System User":

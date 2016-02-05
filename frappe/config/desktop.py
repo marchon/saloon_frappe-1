@@ -35,7 +35,7 @@ def get_data():
 			"link": "List/ToDo",
 			"doctype": "ToDo",
 			"type": "list"
-		}
+		},
 		#"Notes": {
 		#	"color": "#95a5a6",
 		#	"doctype": "Note",
@@ -60,31 +60,31 @@ def get_data():
 		# 	"icon": "octicon octicon-globe",
 		# 	"type": "module"
 		# },
-		#"Installer": {
-		#	"color": "#5ac8fb",
-		#	"icon": "icon-download",
-		#	"icon": "octicon octicon-cloud-download",
-		#	"link": "applications",
-		#	"type": "page",
-		#	"label": _("Installer")
-		#},
-		#"Setup": {
-		#	"color": "#bdc3c7",
-		#	"icon": "icon-wrench",
-		#	"icon": "octicon octicon-settings",
-		#	"type": "module"
-		#},
-		#"Core": {
-		#	"color": "#589494",
-		#	"icon": "icon-cog",
-		#	"icon": "octicon octicon-file-binary",
-		#	"type": "module",
-		#	"system_manager": 1
-		#},
-		#"Integrations": {
-		#	"color": "#36414C",
-		#	"icon": "octicon octicon-plug",
-		#	"type": "module",
-		#	"system_manager": 1
-		#}
+		"Installer": {
+			"color": "#5ac8fb",
+			"icon": "icon-download",
+			"icon": "octicon octicon-cloud-download",
+			"link": "applications",
+			"type": "page",
+			"label": _("Installer")
+		},
+		"Setup": {
+			"color": "#bdc3c7",
+			"icon": "icon-wrench",
+			"icon": "octicon octicon-settings",
+			"type": "module"
+		},
+		"Core": {
+			"color": "#589494",
+			"icon": "icon-cog",
+			"icon": "octicon octicon-file-binary",
+			"type": "module",
+			"system_manager": 1
+		},
+		"Integrations": {
+			"color": "#36414C",
+			"icon": "octicon octicon-plug",
+			"type": "module",
+			"system_manager": 1
+		}
 	}

@@ -85,16 +85,18 @@ def enqueue_applicable_events(site, nowtime, last):
 
 	return out
 
-def trigger(site, event, now=False):
+def trigger(site, event, now=True):
 	"""trigger method in startup.schedule_handler"""
 	from frappe.tasks import scheduler_task
 
 	for handler in frappe.get_hooks("scheduler_events").get(event, []):
-		if not check_lock(handler):
-			if not now:
-				scheduler_task.delay(site=site, event=event, handler=handler)
-			else:
-				scheduler_task(site=site, event=event, handler=handler, now=True)
+		# if not check_lock(handler):
+		# 	if not now:
+		# 		print "not now -----------------------------"
+		# 		scheduler_task.delay(site=site, event=event, handler=handler)
+		# 	else:
+		print "running now -----------------------------"
+		scheduler_task(site=site, event=event, handler=handler, now=True)
 
 	if frappe.flags.in_test:
 		frappe.flags.ran_schedulers.append(event)

@@ -176,6 +176,7 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 			selectable: true,
 			selectHelper: true,
 			forceEventDuration: true,
+			slotDuration: '00:15:00',
 			events: function(start, end, timezone, callback) {
 				return frappe.call({
 					method: me.get_events_method || "frappe.desk.calendar.get_events",

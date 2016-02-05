@@ -1263,7 +1263,7 @@
  "issingle": 0, 
  "istable": 0, 
  "max_attachments": 5, 
- "modified": "2015-11-02 11:55:00.983625", 
+ "modified": "2016-02-03 16:16:27.029919", 
  "modified_by": "Administrator", 
  "module": "Core", 
  "name": "User", 
@@ -1271,7 +1271,7 @@
  "permissions": [
   {
    "amend": 0, 
-   "apply_user_permissions": 1, 
+   "apply_user_permissions": 0, 
    "cancel": 0, 
    "create": 1, 
    "delete": 0, 

@@ -635,7 +635,7 @@
  "is_submittable": 0, 
  "issingle": 0, 
  "istable": 0, 
- "modified": "2015-11-04 12:16:31.886553", 
+ "modified": "2016-02-04 08:58:02.753348", 
  "modified_by": "Administrator", 
  "module": "Desk", 
  "name": "Event", 
@@ -659,11 +659,12 @@
    "set_user_permissions": 0, 
    "share": 0, 
    "submit": 0, 
+   "user_permission_doctypes": "[\"DocType\",\"Event\"]", 
    "write": 0
   }, 
   {
    "amend": 0, 
-   "apply_user_permissions": 1, 
+   "apply_user_permissions": 0, 
    "cancel": 0, 
    "create": 0, 
    "delete": 0, 
@@ -679,11 +680,12 @@
    "set_user_permissions": 0, 
    "share": 0, 
    "submit": 0, 
+   "user_permission_doctypes": "[\"DocType\",\"Event\"]", 
    "write": 1
   }, 
   {
    "amend": 0, 
-   "apply_user_permissions": 1, 
+   "apply_user_permissions": 0, 
    "cancel": 0, 
    "create": 0, 
    "delete": 0, 
@@ -699,12 +701,12 @@
    "set_user_permissions": 0, 
    "share": 0, 
    "submit": 0, 
-   "user_permission_doctypes": "[\"Company\"]", 
+   "user_permission_doctypes": "[\"DocType\",\"Event\"]", 
    "write": 0
   }, 
   {
    "amend": 0, 
-   "apply_user_permissions": 1, 
+   "apply_user_permissions": 0, 
    "cancel": 0, 
    "create": 1, 
    "delete": 1, 
@@ -720,11 +722,12 @@
    "set_user_permissions": 0, 
    "share": 1, 
    "submit": 0, 
+   "user_permission_doctypes": "[\"DocType\",\"Event\"]", 
    "write": 1
   }, 
   {
    "amend": 0, 
-   "apply_user_permissions": 1, 
+   "apply_user_permissions": 0, 
    "cancel": 0, 
    "create": 1, 
    "delete": 1, 
@@ -740,6 +743,7 @@
    "set_user_permissions": 0, 
    "share": 1, 
    "submit": 0, 
+   "user_permission_doctypes": "[\"DocType\",\"Event\"]", 
    "write": 1
   }, 
   {
