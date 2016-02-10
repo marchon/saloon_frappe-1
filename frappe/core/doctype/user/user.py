@@ -32,30 +32,19 @@ class User(Document):
 
 		if self.name not in STANDARD_USERS:
 			self.validate_email_type(self.email)
-        #gangadhar for install
-		
-		#Superadmin creation validation for company
-		# superadmin = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Administrator'""",as_list=1)
-		# if superadmin and ("Administrator" in [user_role.role for user_role in self.get("user_roles")]):
-		# 	if superadmin[0][0]!=self.name:
-		# 		frappe.throw(_("SuperAdmin is already created,you cannot create new superadmin !").format(superadmin[0][0],self.company))
-
-
+        
 		#Validation for user creation companywise
-		role = frappe.db.sql("select  u.name from tabUser u , tabUserRole r where r.parent=u.name and r.role='Admin' and u.name='%s'" %(frappe.session.user))
-
-		if self.get("__islocal") and role :
-			count=frappe.db.sql("select count(name) from tabUser where owner='%s'"%(frappe.session.user),as_list=1)
-			if count and count[0][0] <=3 :
+		if self.get("__islocal") :
+			count = frappe.db.sql("""select count(name) from tabUser where name not in ('Administrator', 
+				'shakeel.viam@vlinku.com', 'Guest') """,as_list=1)
+			if count and count[0][0] <= 4 :
 				pass
 			else:
-				frappe.throw(_("You can create only '4' users and you have already created '{0}' users.").format(count[0][0]))
+				frappe.throw(_("You can create only '4' users and you have already created that."))
 		
 		self.add_system_manager_role()
-		# gangadhar
-		# self.set_userperm_company()
 
-		self.validate_userrole_admin()
+		# self.set_userperm_company()
 		self.validate_system_manager_user_type()
 		self.check_enable_disable()
 		self.update_gravatar()
@@ -83,11 +72,13 @@ class User(Document):
 			return
 
 		if self.name not in STANDARD_USERS and self.user_type == "System User" and not self.get_other_system_managers():
-			msgprint(_("Adding System Manager to this User as there must be atleast one System Manager"))
-			self.append("user_roles", {
-				"doctype": "UserRole",
-				"role": "System Manager"
-			})
+			frappe.errprint("in standard_users")
+			# # msgprint(_("Adding System Manager to this User as there must be atleast one System Manager"))
+			# self.append("user_roles", {
+			# 	"doctype": "UserRole",
+			# 	# "role": "System Manager"
+			# 	"role": "Admin"
+			# })
 
 	def validate_system_manager_user_type(self):
 		#if user has system manager role then user type should be system user
@@ -109,30 +100,20 @@ class User(Document):
 		clear_notifications(user=self.name)
 		frappe.clear_cache(user=self.name)
 		self.send_password_notifcation(self.__new_password)
-		# self.set_userperm_company()
 
-	def set_userperm_company(self):
-		# if self.get("__islocal"):
-		defval = frappe.db.sql("""select defvalue from `tabDefaultValue` where parent = '%s' and defkey='Company'"""
-			%(self.email),as_list=1)
-		if defval:
-			pass
-			# frappe.db.sql("""update `tabDefaultValue` set defvalue = '%s' where parent = '%s' and defkey='Company'"""
-			# %(self.company,self.name))
-		else:
-			d = frappe.new_doc("DefaultValue")
-			d.parentfield = 'system_defaults'
-			d.parenttype = 'User Permission'
-			d.parent = self.email
-			d.defkey = 'Company'
-			d.defvalue = self.company 
-			d.insert()
-
-	def validate_userrole_admin(self):
-		user = frappe.db.sql("""select u.name from tabUser u,tabUserRole r where r.parent=u.name and r.role='Admin'""",as_list=1)
-		if user and frappe.session.user=='Administrator' and ("Admin" in [user_role.role for user_role in self.get("user_roles")]):
-			if user[0][0]!=self.name:
-				frappe.throw(_("Admin '{0}' is already created, you cannot create two admin users for one company !").format(user[0][0]))
+	# def set_userperm_company(self):
+	# 	defval = frappe.db.sql("""select defvalue from `tabDefaultValue` where parent = '%s' and defkey='Company'"""
+	# 		%(self.email),as_list=1)
+	# 	if defval:
+	# 		pass
+	# 	else:
+	# 		d = frappe.new_doc("DefaultValue")
+	# 		d.parentfield = 'system_defaults'
+	# 		d.parenttype = 'User Permission'
+	# 		d.parent = self.email
+	# 		d.defkey = 'Company'
+	# 		d.defvalue = self.company 
+	# 		d.insert()
 
 	def share_with_self(self):
 		if self.user_type=="System User":
