@@ -347,7 +347,7 @@ def get_all_roles(arg=None):
 def get_all_roles_saloon(arg=None):
 	"""return all roles"""
 	return [r[0] for r in frappe.db.sql("""select name from tabRole
-		where name not in ('Stock Manager','Stock User','Newsletter Manager','Analytics','Material Master Manager','Maintenance Manager','Maintenance User','Projects Manager','Projects User','Manufacturing User','HR Manager','HR User','Manufacturing Manager','Material Manager','Quality Manager','Material User','Purchase User','Auditor','Sales Master Manager','Purchase Master Manager','Purchase Manager','Accounts Manager','Accounts User','Blogger','Website Manager','Support Team','Sales Manager','Support Manager','Sales User','Report Manager','All','Guest','Admin','Administrator','System Manager') order by name""")]
+		where name not in ('Stock Manager','Stock User','Newsletter Manager','Analytics','Material Master Manager','Maintenance Manager','Maintenance User','Projects Manager','Projects User','Manufacturing User','HR Manager','HR User','Manufacturing Manager','Material Manager','Quality Manager','Material User','Purchase User','Auditor','Sales Master Manager','Purchase Master Manager','Purchase Manager','Accounts Manager','Accounts User','Blogger','Website Manager','Support Team','Sales Manager','Support Manager','Sales User','Report Manager','All','Guest','Administrator','System Manager') order by name""")]
 
 
 @frappe.whitelist()

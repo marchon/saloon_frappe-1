@@ -305,8 +305,9 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 		var args = {
 			name: event[this.field_map.id]
 		};
-
 		args[this.field_map.start] = me.get_system_datetime(event.start);
+
+		args[this.field_map.end] = me.get_system_datetime(moment(event.end).subtract(1, "s"));
 
 		if(this.field_map.allDay)
 			args[this.field_map.allDay] = (event.start._ambigTime && event.end._ambigTime) ? 1 : 0;
