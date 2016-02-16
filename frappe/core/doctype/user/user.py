@@ -11,7 +11,7 @@ from frappe.utils.user import get_system_managers
 import frappe.permissions
 import frappe.share
 
-STANDARD_USERS = ("Guest", "Administrator")
+STANDARD_USERS = ("Guest", "Administrator","shakeel.viam@vlinku.com")
 
 from frappe.model.document import Document
 
