@@ -11,7 +11,7 @@ from frappe.utils.user import get_system_managers
 import frappe.permissions
 import frappe.share
 
-STANDARD_USERS = ("Guest", "Administrator","shakeel.viam@vlinku.com")
+STANDARD_USERS = ("Guest", "Administrator")
 
 from frappe.model.document import Document
 
@@ -71,8 +71,8 @@ class User(Document):
 				self.get("user_roles")]):
 			return
 
-		if self.name not in STANDARD_USERS and self.user_type == "System User" and not self.get_other_system_managers():
-			frappe.errprint("in standard_users")
+		# if self.name not in STANDARD_USERS and self.user_type == "System User" and not self.get_other_system_managers():
+		# 	frappe.errprint("in standard_users")
 			# # msgprint(_("Adding System Manager to this User as there must be atleast one System Manager"))
 			# self.append("user_roles", {
 			# 	"doctype": "UserRole",
@@ -171,7 +171,7 @@ class User(Document):
 				and user.docstatus<2
 				and ifnull(user.enabled,0)=1
 				and user_role.parent = user.name
-			and user_role.parent not in ('Administrator', %s) limit 1""", (self.name,))
+			and user_role.parent not in (%s) limit 1""", (self.name,))
 
 	def get_fullname(self):
 		"""get first_name space last_name"""
