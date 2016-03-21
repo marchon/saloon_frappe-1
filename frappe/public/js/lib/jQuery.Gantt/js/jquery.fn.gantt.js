@@ -36,7 +36,7 @@
             months: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
             dow: ["S", "M", "T", "W", "T", "F", "S"],
             navigate: "buttons",
-            scale: "days",
+            scale: "hours",
             useCookie: false,
             maxScale: "months",
             minScale: "hours",
