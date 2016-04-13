@@ -11,6 +11,11 @@ frappe.views.CalendarFactory = frappe.views.Factory.extend({
 		frappe.require('assets/frappe/js/lib/fullcalendar/fullcalendar.min.css');
 		frappe.require('assets/frappe/js/lib/fullcalendar/fullcalendar.min.js');
 
+		// added by gangadhar for calander resource
+		frappe.require('assets/frappe/js/lib/jsfiddle/fullcalendar.css');
+		frappe.require('assets/frappe/js/lib/jsfiddle/fullcalendar.js');
+		frappe.require('assets/frappe/js/lib/jsfiddle/fullcalendar-resource.js');
+
 		frappe.model.with_doctype(route[1], function() {
 			var options = {
 				doctype: route[1]
@@ -96,7 +101,7 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 		// $('<div class="help"></div>')
 		// 	.html(__("Select dates to create a new ") + __(me.doctype))
 		// 	.appendTo(this.$wrapper);
-
+		
 		this.$cal.fullCalendar(this.cal_options);
 		this.set_css();
 	},
@@ -165,18 +170,165 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 		return frappe.datetime.convert_to_system_tz(date);
 	},
 	setup_options: function() {
+
 		var me = this;
+
+		// added if else by gangadhar 
+		// if is for resource view for event
+        
+		if (this.doctype=='Appointment'){
+		//console.log("in setup_options.....")
+		var res_list=[];
+		var res_dict={};
 		this.cal_options = {
 			header: {
-				left: 'prev,next today',
-				center: 'title',
-				right: 'month,agendaWeek,agendaDay'
+      			left: 'prev,next today',
+      			center: 'title',
+      			right: 'resourceAgendaDay,month,agendaWeek,agendaDay'
+    		},
+    		editable: true,
+    		selectable: true,
+			selectHelper: true,
+    		forceEventDuration: true,
+            slotDuration: '00:15:00',
+            eventLimit: true,
+    		defaultView: 'month',
+    		views: {
+      			resourceAgendaDay: {
+        			type: 'resourceAgenda',
+        			duration: {
+          				days: 1,
+        			},
+        			buttonText: "Employees "
+      			}
+    		},
+    		allDaySlot: false, // Unsupported yet
+    		unknownResourceTitle: 'All other events',
+            
+            viewRender: function(view, element) {
+       			// var res_list=[];
+       			me.cal_options.resources=[];
+       			if (res_list==""){
+       				frappe.call({
+						method: "erpnext.crm.doctype.appointment.appointment.get_employees",
+						type: "GET",
+						callback: function(r) {
+							var res=r.message;
+							$.each(res, function(i, d) {
+								res_dict={};
+								res_dict['id']=d.id;
+								res_dict['name']=d.name;
+								res_list.push(res_dict);
+							});	
+							view['resources']=res_list
+						}
+					})
+       			}		     
+    		},
+
+			events: function(start, end, timezone, callback) {
+				//console.log("in events grid..")
+				var res_list=[];
+				return frappe.call({
+					method: "erpnext.crm.doctype.appointment.appointment.get_events_grid",
+					type: "GET",
+					args: me.get_args(start,end),
+					callback: function(r) {
+						//console.log("in callback...")
+						//console.log(r.message)
+						var events = r.message[0];
+						var res=r.message[1];
+						$.each(res, function(i, d) {
+							res_dict={};
+							res_dict['id']=d.id;
+							res_dict['name']=d.name;
+							res_list.push(res_dict);
+						});
+						me.prepare_events(events);
+						// console.log(['res list in events',res_list]);
+						callback(events);
+					}
+				})
+			},
+
+            resources: res_list,
+            
+			eventClick: function(event, jsEvent, view) {
+				//console.log("in event clck.....")
+				// edit event description or delete
+				var doctype = event.doctype || me.doctype;
+				if(frappe.model.can_read(doctype)) {
+					frappe.set_route("Form", doctype, event.name);
+				}
+			},
+			eventDrop: function(event, delta, revertFunc, jsEvent, ui, view) {
+				console.log("in event drop");
+				me.update_event(event, revertFunc);
+			},
+			eventResize: function(event, delta, revertFunc, jsEvent, ui, view) {
+				me.update_event(event, revertFunc);
+			},
+			select: function(startDate, endDate, jsEvent, view) {
+				// console.log("new appointment...!!!!!!!!!!")
+				
+				if (view.name==="month" && (endDate - startDate)===86400000) {
+					// detect single day click in month view
+					return;
+
+				}
+                
+				var event = frappe.model.get_new_doc(me.doctype);
+
+				var args=me.get_args('start', 'end')
+
+				if (args.filters.employee){
+                	event[me.field_map.employee]=args.filters.employee
+                }
+
+				if (view.name==="resourceAgendaDay"){
+					console.log(args);
+					console.log(args.filters.employee);
+                	event[me.field_map.employee]='Eshwaree R'
+                }
+
+				event[me.field_map.start] = me.get_system_datetime(startDate);
+
+				if(me.field_map.end)
+					event[me.field_map.end] = me.get_system_datetime(endDate);
+
+				if(me.field_map.allDay) {
+					var all_day = (startDate._ambigTime && endDate._ambigTime) ? 1 : 0;
+
+					event[me.field_map.allDay] = all_day;
+
+					if (all_day)
+						event[me.field_map.end] = me.get_system_datetime(moment(endDate).subtract(1, "s"));
+				}
+
+				frappe.set_route("Form", me.doctype, event.name);
+				
+			},
+			dayClick: function(date, allDay, jsEvent, view) {
+				jsEvent.day_clicked = true;
+				return false;
+			}
+		};
+	    }
+
+		// else is for devalut view for all other doctypes
+		else {
+
+			this.cal_options = {
+				header: {
+					left: 'prev,next today',
+					center: 'title',
+					right: 'month,agendaWeek,agendaDay'
 			},
 			editable: true,
 			selectable: true,
 			selectHelper: true,
 			forceEventDuration: true,
-			slotDuration: '00:15:00',
+			
 			events: function(start, end, timezone, callback) {
 				return frappe.call({
 					method: me.get_events_method || "frappe.desk.calendar.get_events",
@@ -188,7 +340,8 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 						callback(events);
 					}
 				})
-			},
+			},		
+    
 			eventClick: function(event, jsEvent, view) {
 				// edit event description or delete
 				var doctype = event.doctype || me.doctype;
@@ -233,6 +386,8 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 			}
 		};
 
+		}
+     
 		if(this.options) {
 			$.extend(this.cal_options, this.options);
 		}
@@ -249,9 +404,13 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 	refresh: function() {
 		this.$cal.fullCalendar('refetchEvents');
 	},
+
 	prepare_events: function(events) {
+		//console.log("in prepare_events")
+		
 		var me = this;
 		$.each(events || [], function(i, d) {
+			//console.log(d)
 			d.id = d.name;
 			d.editable = frappe.model.can_write(d.doctype || me.doctype);
 

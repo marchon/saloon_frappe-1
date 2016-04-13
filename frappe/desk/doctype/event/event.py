@@ -117,6 +117,7 @@ def get_events(start, end, user=None, for_reminder=False):
 		add_events.append(new_event)
 
 	for e in events:
+		e.resource=e.subject
 		if e.repeat_this_event:
 			e.starts_on = get_datetime_str(e.starts_on)
 			if e.ends_on:

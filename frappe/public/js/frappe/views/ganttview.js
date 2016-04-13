@@ -240,11 +240,10 @@ frappe.views.Gantt = frappe.views.CalendarBase.extend({
 
 		if (filters["employee"]){
 			$.each(r.message, function(i,v) {
-				// console.log(v["name"])
 				v["title"] = v[me.field_map["title"]];
 
 			// description
-				v.desc = v.title
+				v.desc = v["name"]
 				// 	+ (v.name ? ("<br>" + v.name) : "");
 
 				$.each(v, function(key, value) {
@@ -277,10 +276,10 @@ frappe.views.Gantt = frappe.views.CalendarBase.extend({
 
 				if(v.start && v.end) {
 					source.push({
-						name: v.title,
+						name: v["name"],
 						desc: v.status,
 						values: [{
-							name: v.title,
+							name: v["name"],
 							desc: v.desc,
 							label: v["name"],
 							from: '/Date('+moment(v.start).format("X")+'000)/',
@@ -314,8 +313,9 @@ frappe.views.Gantt = frappe.views.CalendarBase.extend({
 							n["title"] = n[me.field_map["title"]];
 
 							// description
-							n.desc = n.title
+							// n.desc = n.title
 								// + (n.name ? ("<br>" + n.name) : "");
+							n.desc = n["name"]
 
 							$.each(n, function(key, value) {
 								if(!in_list(["name", "title", me.field_map["title"], "desc"], key) && value) {
@@ -345,10 +345,9 @@ frappe.views.Gantt = frappe.views.CalendarBase.extend({
 								n.cssClass = frappe.utils.guess_style(n.status, "standard")
 							}
 
-							if(n.start && n.end && n.title == v["name"]) {
+							if(n.start && n.end && n["employee"] == v["name"]) {
 								value = value.concat(
 									[{
-										name: n.title,
 										desc: n.desc,
 										label: n["name"],
 										from: '/Date('+moment(n.start).format("X")+'000)/',

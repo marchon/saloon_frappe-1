@@ -41,7 +41,7 @@
 		initialize: function() {
 			// called once when the view is instantiated, when the user switches to the view.
 			// initialize member variables or do other setup tasks.
-			silent || console.log("ResourceAgenda#initialize");
+			// silent || console.log("ResourceAgenda#initialize");
 			this.resources = this.opt("resources");
 			fc.views.agenda.prototype.initialize.apply(this, arguments); // super
 			// TODO: Override DayGrid
@@ -93,12 +93,12 @@
 						return '' +
 							'<th class="fc-day-header ' + view.widgetHeaderClass + ' fc-' + this.dayIDs[date.day()] + ' fc-' + view.widgetResourceHeaderClass + ' fc-' + view.widgetUnknownResourceHeaderClass + '">' +
 							fc.htmlEscape(view.unknownResourceTitle) +
-							' </th>';
+							' &nbsp;&nbsp; <img src="http://www.clker.com/cliparts/g/l/R/7/h/u/teamstijl-person-icon-blue.svg" alt="Smiley face" width="28" height="28"></th>';
 					}
 					return '' +
 						'<th class="fc-day-header ' + view.widgetHeaderClass + ' fc-' + this.dayIDs[date.day()] + ' fc-' + view.widgetResourceHeaderClass + '">' +
 						fc.htmlEscape(cell.resource.name) +
-						' </th>';
+						' &nbsp;&nbsp; <img src="https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTZ_Bqvh1R05Ujtq_qiuLX9b2JzIaeqkj3e6EQgQ-EmDaYkLLSa4A" alt="Smiley face" width="28" height="28"> </th>';
 				}
 				return '' +
 					'<th class="fc-day-header ' + view.widgetHeaderClass + ' fc-' + this.dayIDs[date.day()] + '">' +
@@ -166,33 +166,33 @@
 		render: function() {
 			// responsible for displaying the skeleton of the view within the already-defined
 			// this.el, a jQuery element.
-			silent || console.log("ResourceAgenda#render");
+			// silent || console.log("ResourceAgenda#render");
 			fc.views.agenda.prototype.render.apply(this, arguments); // super
 		},
 		setHeight: function(height, isAuto) {
 			// responsible for adjusting the pixel-height of the view. if isAuto is true, the
 			// view may be its natural height, and `height` becomes merely a suggestion.
-			silent || console.log("ResourceAgenda#setHeight");
+			// silent || console.log("ResourceAgenda#setHeight");
 			fc.views.agenda.prototype.setHeight.apply(this, arguments);
 		},
 		renderEvents: function(events) {
 			// reponsible for rendering the given Event Objects
-			silent || console.log("ResourceAgenda#renderEvents");
+			// silent || console.log("ResourceAgenda#renderEvents");
 			fc.views.agenda.prototype.renderEvents.apply(this, arguments);
 		},
 		destroyEvents: function() {
 			// responsible for undoing everything in renderEvents
-			silent || console.log("ResourceAgenda#destroyEvents");
+			// silent || console.log("ResourceAgenda#destroyEvents");
 			fc.views.agenda.prototype.destroyEvents.apply(this, arguments);
 		},
 		renderSelection: function(range) {
 			// accepts a {start,end} object made of Moments, and must render the selection
-			silent || console.log("ResourceAgenda#renderSelection");
+			// silent || console.log("ResourceAgenda#renderSelection");
 			fc.views.agenda.prototype.renderSelection.apply(this, arguments);
 		},
 		destroySelection: function() {
 			// responsible for undoing everything in renderSelection
-			silent || console.log("ResourceAgenda#destroySelection");
+			// silent || console.log("ResourceAgenda#destroySelection");
 			fc.views.agenda.prototype.destroy.apply(this, arguments);
 		}
 	});
