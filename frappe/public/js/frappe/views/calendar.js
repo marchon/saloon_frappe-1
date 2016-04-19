@@ -285,11 +285,11 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
                 	event[me.field_map.employee]=args.filters.employee
                 }
 
-				if (view.name==="resourceAgendaDay"){
+				/*if (view.name==="resourceAgendaDay"){
 					console.log(args);
 					console.log(args.filters.employee);
                 	event[me.field_map.employee]='Eshwaree R'
-                }
+                }*/
 
 				event[me.field_map.start] = me.get_system_datetime(startDate);
 
