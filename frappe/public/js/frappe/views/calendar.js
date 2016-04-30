@@ -177,7 +177,6 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 		// if is for resource view for event
         
 		if (this.doctype=='Appointment'){
-		//console.log("in setup_options.....")
 		var res_list=[];
 		var res_dict={};
 		this.cal_options = {
@@ -227,15 +226,12 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
     		},
 
 			events: function(start, end, timezone, callback) {
-				//console.log("in events grid..")
 				var res_list=[];
 				return frappe.call({
 					method: "erpnext.crm.doctype.appointment.appointment.get_events_grid",
 					type: "GET",
 					args: me.get_args(start,end),
 					callback: function(r) {
-						//console.log("in callback...")
-						//console.log(r.message)
 						var events = r.message[0];
 						var res=r.message[1];
 						$.each(res, function(i, d) {
@@ -245,7 +241,6 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 							res_list.push(res_dict);
 						});
 						me.prepare_events(events);
-						// console.log(['res list in events',res_list]);
 						callback(events);
 					}
 				})
@@ -254,8 +249,6 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
             resources: res_list,
             
 			eventClick: function(event, jsEvent, view) {
-				//console.log("in event clck.....")
-				// edit event description or delete
 				var doctype = event.doctype || me.doctype;
 				if(frappe.model.can_read(doctype)) {
 					frappe.set_route("Form", doctype, event.name);
@@ -269,7 +262,6 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 				me.update_event(event, revertFunc);
 			},
 			select: function(startDate, endDate, jsEvent, view) {
-				// console.log("new appointment...!!!!!!!!!!")
 				
 				if (view.name==="month" && (endDate - startDate)===86400000) {
 					// detect single day click in month view
@@ -286,8 +278,6 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
                 }
 
 				/*if (view.name==="resourceAgendaDay"){
-					console.log(args);
-					console.log(args.filters.employee);
                 	event[me.field_map.employee]='Eshwaree R'
                 }*/
 
@@ -405,12 +395,9 @@ frappe.views.Calendar = frappe.views.CalendarBase.extend({
 		this.$cal.fullCalendar('refetchEvents');
 	},
 
-	prepare_events: function(events) {
-		//console.log("in prepare_events")
-		
+	prepare_events: function(events) {		
 		var me = this;
 		$.each(events || [], function(i, d) {
-			//console.log(d)
 			d.id = d.name;
 			d.editable = frappe.model.can_write(d.doctype || me.doctype);
 
