@@ -659,7 +659,8 @@ _f.Frm.prototype._save = function(save_action, callback, btn, on_error) {
 _f.Frm.prototype.savesubmit = function(btn, callback, on_error) {
 	var me = this;
 	this.validate_form_action("Submit");
-	frappe.confirm(__("Permanently Submit {0}?", [this.docname]), function() {
+	//alisha commented confimation for quick entery
+	//frappe.confirm(__("Permanently Submit {0}?", [this.docname]), function() {
 		validated = true;
 		me.script_manager.trigger("before_submit").done(function() {
 			if(!validated) {
@@ -675,7 +676,7 @@ _f.Frm.prototype.savesubmit = function(btn, callback, on_error) {
 				}
 			}, btn, on_error);
 		});
-	}, on_error);
+	//}, on_error);
 };
 
 _f.Frm.prototype.savecancel = function(btn, callback, on_error) {
