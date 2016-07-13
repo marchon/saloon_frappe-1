@@ -761,9 +761,9 @@ def backup(context, with_files=False, backup_path_db=None, backup_path_files=Non
 	"Backup"
 	from frappe.utils.backups import scheduled_backup
 	verbose = context.verbose
-	# for site in context.sites:
-	# All sites bachup with sites - Gangadhar Sir
-	for site in frappe.utils.get_sites():
+	for site in context.sites:
+		# All sites bachup with sites - Gangadhar Sir
+		#for site in frappe.utils.get_sites():
 		frappe.init(site=site)
 		frappe.connect()
 		odb = scheduled_backup(ignore_files=not with_files, backup_path_db=backup_path_db, backup_path_files=backup_path_files, force=True)
