@@ -34,14 +34,23 @@ class User(Document):
 			self.validate_email_type(self.email)
         
 		#Validation for user creation companywise
+		a =  frappe.get_site_path()
+		a = a.split("./")[1]
 		if self.get("__islocal") :
 			count = frappe.db.sql("""select count(name) from tabUser where name not in ('Administrator', 
 				'shakeel.viam@vlinku.com', 'Guest') """,as_list=1)
-			if count and count[0][0] <= 4 :
-				pass
-			else:
-				frappe.throw(_("You can create only '4' users and you have already created that."))
-		
+			if a!='masco.vlinkuerp.com':
+				if count and count[0][0] <= 4 :
+					pass
+				else:
+					frappe.throw(_("You can create only '4' users and you have already created that."))
+			
+			if a=='masco.vlinkuerp.com':
+				if count and count[0][0] <= 30 :
+					pass
+				else:
+					frappe.throw(_("You can create only '30' users and you have already created that."))
+
 		self.add_system_manager_role()
 
 		# self.set_userperm_company()
