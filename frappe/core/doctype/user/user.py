@@ -465,7 +465,8 @@ def get_total_users(exclude_users=None):
 
 def get_system_users(exclude_users=None):
 	# frappe.errprint("users")
-	company = frappe.db.sql("""select company from `tabUser` where name = '%s'"""%(frappe.session.user),as_list=1)
+	#company = frappe.db.sql("""select company from `tabUser` where name = '%s'"""%(frappe.session.user),as_list=1)
+	company = frappe.db.sql("select name from `tabCompany`", as_list=1)[0]
 	if not exclude_users:
 		exclude_users = []
 	elif not isinstance(exclude_users, (list, tuple)):
